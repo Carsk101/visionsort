@@ -205,9 +205,13 @@ visionsort/
 ├── Cargo.toml          — package manifest
 ├── Cargo.lock          — dependency lockfile
 ├── README.md           — this file
+├── index.html          — interactive documentation site
 ├── WHITEPAPER.md       — full algorithm design and complexity analysis
+├── pkg/                — compiled WebAssembly artifacts for the site
 └── src/
-    └── lib.rs          — full implementation + tests
+    ├── lib.rs          — core algorithm implementation + tests
+    ├── traced.rs       — instrumented sort that emits state snapshots
+    └── wasm.rs         — WebAssembly bindings for the frontend
 ```
 
 **Key types in `lib.rs`:**
