@@ -79,7 +79,9 @@ This phase costs O(k log k) = O(log²n) — effectively free — and produces a 
 
 ### Phase 2 — Segmentation (O(n))
 
-Walk the array once. Commit to either an ascending or descending run at each position, walk the run to exhaustion, and emit it as a segment. Descending runs are reversed in-place immediately, converting them to ascending runs at no additional asymptotic cost.
+Walk the array once. Commit to either an ascending or descending run at each position, and walk the run to exhaustion. Descending runs are reversed in-place immediately, converting them to ascending runs at no additional asymptotic cost.
+
+Crucially, runs are extended to a minimum length of 64 elements (`MINRUN`) using insertion sort before being emitted as a segment. Without this minimum run length, random data produces O(n) tiny segments, causing the Phase 5 merge step to dominate the runtime. With `MINRUN=64`, random data produces O(n/64) segments. This minimum run length mechanism is directly borrowed from Timsort's design.
 
 The key invariant: segments tile the array exactly — no gaps, no overlaps. Each element belongs to exactly one segment.
 
@@ -100,7 +102,7 @@ These two scores define a 2D routing space with four quadrants:
 | **Low disorder** | `NearlyFree` — verify only | `Verify` — confirm order |
 | **High disorder** | `PlacementSort` — predict & place | `FullSort` — introsort fallback |
 
-Segments with length ≤ 16 are routed to `Trivial` regardless of scores.
+Segments with length < 128 (2× `MINRUN`) are routed to `Trivial` regardless of scores. The rationale for this threshold is empirical: for segments below this size, the computational overhead of computing disorder and entropy scores exceeds the time saved by optimal routing.
 
 Each segment's priority score is `disorder × entropy × length`. Segments are inserted into a max-heap keyed by this score — highest-priority (most disordered, most entropic, largest) segments are processed first.
 
@@ -126,11 +128,11 @@ After each bucket is written back, the distribution model is updated with the ac
 
 ### Phase 5 — Integration (O(n log k))
 
-Merge all k sorted segments using a min-heap k-way merge. The implementation uses a single scratch buffer equal to the input size, achieving 1× peak memory overhead.
+Merge all k sorted segments using a bottom-up pairwise merge with galloping.
 
-**Memory design:** A single copy of the full array is made into a scratch buffer at the start of Phase 5. Min-heap entries track absolute positions within the scratch buffer — each entry holds the current value, the next read position, and the segment's end boundary. The merged output is written directly back into the original `data` slice. No per-segment allocation is required. The previous approach allocated k separate vectors (one per segment) plus a separate output buffer, reaching 2× peak memory; the scratch buffer approach reduces this to 1×.
+This replaces the earlier k-way min-heap merge. Pairs of adjacent segments are iteratively merged together until a single sorted segment remains. The implementation uses a single scratch buffer equal to the input size, achieving 1× peak memory overhead by alternating ("ping-ponging") reads and writes between the main array and the scratch buffer at each level of the merge tree.
 
-Each heap pop yields the globally minimum remaining value across all segments. On nearly-sorted data with few long runs, k is small and this phase approaches O(n).
+The merge step leverages **galloping** (exponential search) when one segment consistently wins comparisons against another. Instead of comparing elements one by one, galloping jumps ahead in exponentially increasing strides (1, 2, 4, 8...), finding the insertion point in O(log m) time and executing bulk memory moves. Galloping is the structural mechanism that makes sorting Nearly Sorted inputs extremely fast, and it is the primary reason VisionSort outperforms quicksort on that input class.
 
 ---
 
@@ -213,6 +215,8 @@ The closest conceptual relative is **learned index structures** (Kraska et al., 
 **The `Into<f64>` type constraint is intentional, not incidental.** VisionSort's prediction mechanism requires values to be mappable to a continuous numeric domain. This makes the algorithm well-suited for numeric data (integers, floats, timestamps, prices, IDs) and unsuitable for types that lack a meaningful total numeric order — arbitrary strings, composite keys, opaque hashes. Attempting to extend VisionSort to such types would require an order-preserving embedding into the reals, which is non-trivial and domain-specific. The constraint is a deliberate design boundary.
 
 **Cache behavior at extreme scale is unverified.** The bucket-local placement strategy in Phase 4 was designed to keep working sets within L1 cache (average bucket size √L). At n = 10M or above, the distribution of bucket sizes and the cost of the verification pass have not been profiled against a production sort. Benchmarking at this scale is the next required step before any production deployment claim.
+
+**Benchmark reality vs theoretical performance.** While VisionSort explicitly relies on the data's entropy to reduce the marginal cost of comparison operations, real-world benchmarks show mixed results against heavily micro-optimized production sorting implementations. Against standard `quicksort` on 1,000,000 elements, VisionSort cleanly wins on organized input classes: Nearly Sorted (+32%) and Reversed (+51%). However, it currently loses to Rust's `std::sort` (a highly tuned `pdqsort`) across all five tested inputs. The gap to `std::sort` on degenerate inputs like All Same and Reversed is largely due to pdqsort's extreme optimization for branch predictability — a category of low-level optimization not yet pursued here. Additionally, the recent shift to a bottom-up pairwise merge introduced a noted performance regression on Reversed inputs (-36% vs the original k-way merge) which remains an open issue to be resolved.
 
 ---
 

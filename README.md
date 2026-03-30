@@ -13,10 +13,10 @@ On structured, low-entropy data (timestamps, prices, IDs, clustered values) it a
 The algorithm runs in five phases:
 
 1. **Glance** — sample log₂(n) elements to build a coarse distribution model
-2. **Segment** — walk the array once to detect and collect monotonic runs
+2. **Segment** — walk the array to collect monotonic runs, extending them to a minimum of 64 elements (`MINRUN`) using insertion sort
 3. **Disorder Map** — score each segment on disorder × entropy, build a priority heap
 4. **Directed Fixation** — sort segments highest-priority first using one of four routes based on their scores
-5. **Integrate** — k-way merge all sorted segments in O(n log k)
+5. **Integrate** — bottom-up pairwise merge of all sorted segments using galloping
 
 The four sort routes are:
 
@@ -27,7 +27,7 @@ The four sort routes are:
 | High | Low | `PlacementSort` | Bucket-local prediction and placement |
 | High | High | `FullSort` | Introsort fallback — guaranteed O(n log n) |
 
-`PlacementSort` is the novel route. The segment is divided into B = ⌈√L⌉ buckets. Each element is assigned to a bucket via a coarse model prediction, each bucket is sorted independently with insertion sort (keeping working sets within L1 cache), and buckets are written back sequentially. Only a final verification pass uses comparisons to fix any cross-bucket boundary violations.
+`PlacementSort` is the novel route. The segment is divided into B = ⌈√L⌉ buckets. Each element is assigned to a bucket via a coarse model prediction, each bucket is sorted independently with insertion sort (keeping working sets within L1 cache), and buckets are written back sequentially. Only a final verification pass uses comparisons to fix any cross-bucket boundary violations. Segments containing fewer than 128 elements (2× `MINRUN`) are caught early and routed to a `Trivial` insertion sort to avoid the overhead of structural mapping and routing.
 
 ---
 
