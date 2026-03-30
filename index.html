@@ -1121,8 +1121,10 @@ function drawCurve() {
   ctx.fillText(label, pad.l + 8, pad.t + 12);
 }
 
-drawCurve();
-window.addEventListener('resize', drawCurve);
+const canvasObserver = new ResizeObserver(() => {
+  if (canvas.offsetWidth > 0) drawCurve();
+});
+canvasObserver.observe(canvas.parentElement);
 
 /* ── Model inspector — uses real WasmModel ── */
 let wasmModel = null;
