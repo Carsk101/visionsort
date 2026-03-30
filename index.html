@@ -619,7 +619,7 @@
       <div>
         <div class="phase-name">Directed Fixation</div>
         <div class="phase-cost">Decreasing marginal cost</div>
-        <div class="phase-desc">Pop highest-priority segment. Sort via its assigned route. For PlacementSort: predict each element's output position using the model, place tentatively, sort only the unplaced minority, verify. Update the model after each placement. Repeat until heap is empty.</div>
+        <div class="phase-desc">Pop highest-priority segment. Sort via its assigned route. For PlacementSort: assign elements to cache-local buckets via model prediction, sort buckets independently, and verify block boundaries. Update the model after each bucket. Repeat until heap is empty.</div>
       </div>
     </div>
     <div class="phase-row">
@@ -627,7 +627,7 @@
       <div>
         <div class="phase-name">Integration</div>
         <div class="phase-cost">O(n log k)</div>
-        <div class="phase-desc">K-way merge of all sorted segments using a min-heap. Seed with the first element of each segment. Each pop yields the globally minimum remaining value. On nearly-sorted data with few long runs, k is small and this phase approaches O(n).</div>
+        <div class="phase-desc">Ping-pong k-way merge of all sorted segments using a min-heap. Uses a single scratch buffer (1× peak memory overhead) to merge without per-segment allocations. On nearly-sorted data with few long runs, k is small and this phase approaches O(n).</div>
       </div>
     </div>
   </div>
@@ -661,8 +661,8 @@
       </div>
       <div class="matrix-cell">
         <div class="route-badge blue">PlacementSort</div>
-        <div class="route-name">Predict &amp; place</div>
-        <div class="route-desc">Model predicts each element's slot. Only unplaced minority sorted by comparison.</div>
+        <div class="route-name">Bucket-local predict</div>
+        <div class="route-desc">Segment divided into cache-sized buckets based on model predictions. Verified via linear scan.</div>
       </div>
       <!-- Row 2 -->
       <div class="matrix-axis">HIGH ENTROPY</div>
