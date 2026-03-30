@@ -1,0 +1,10 @@
+[package]
+name = "visionsort"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "visionsort"
+path = "src/lib.rs"
+
+[dev-dependencies]
