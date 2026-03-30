@@ -112,22 +112,25 @@ Pop segments from the heap in priority order and sort each according to its rout
 
 **Verify:** Single linear scan to detect order violations. Only invoke insertion sort if violations are found. Sorted high-entropy segments often require no work at all.
 
-**PlacementSort:** The novel route. For each element in the segment:
-1. Query the distribution model for a predicted output position and confidence score
-2. If confidence exceeds threshold (0.7) and the predicted slot is unoccupied, place the element there tentatively without comparison
-3. Otherwise, queue the element for comparison-based resolution
+**PlacementSort:** The novel route, implemented with bucket-local placement for cache efficiency.
 
-After all elements are processed, sort only the unplaced minority using introsort, then slot them into the gaps. Verify the result with a linear scan and apply insertion sort only if violations remain.
+The segment of length L is divided into B = ⌈√L⌉ buckets. Each element is assigned to a bucket via a coarse model prediction: the predicted output position is mapped to a bucket index in [0, B). Elements are collected into buckets, each bucket is sorted independently with insertion sort, and the sorted buckets are written back sequentially.
 
-After each placement, update the distribution model: refine min/max bounds, decay entropy proportional to the observation ratio, and insert high-surprise elements (those whose predicted position was far from actual) as new anchor points.
+The bucket-local design is a deliberate choice over the naive global-slot approach. Global slot prediction places each element at a predicted absolute position anywhere in [0, L), producing a random memory access pattern across the full segment. At large n, this causes cache misses on every placement — a main memory access costs ~100ns, erasing the comparison savings. Bucket-local placement keeps each working set within √L elements, well within L1 cache regardless of n.
+
+Average bucket size is √L. Each bucket's insertion sort operates entirely within cache. Cross-bucket boundary violations are resolved with a single verification pass using insertion sort, which is O(n) on nearly-sorted data.
+
+After each bucket is written back, the distribution model is updated with the actual positions via Bayesian refinement: min/max bounds are refined, entropy is decayed proportional to the observation ratio, and high-surprise elements trigger anchor insertions that improve future predictions.
 
 **FullSort:** Introsort (quicksort with heapsort fallback at depth limit 2 log n). Guaranteed O(n log n). This is the adversarial fallback — reached only when both disorder and entropy are high.
 
 ### Phase 5 — Integration (O(n log k))
 
-Merge all k sorted segments using a min-heap k-way merge. Each segment seeds the heap with its first element. Each heap pop yields the globally minimum remaining value and re-seeds the heap with the next element from the same segment.
+Merge all k sorted segments using a min-heap k-way merge. The implementation uses a single scratch buffer equal to the input size, achieving 1× peak memory overhead.
 
-Total cost: O(n log k) where k is the number of segments. On nearly-sorted data with few long runs, k is small and this phase is near O(n).
+**Memory design:** A single copy of the full array is made into a scratch buffer at the start of Phase 5. Min-heap entries track absolute positions within the scratch buffer — each entry holds the current value, the next read position, and the segment's end boundary. The merged output is written directly back into the original `data` slice. No per-segment allocation is required. The previous approach allocated k separate vectors (one per segment) plus a separate output buffer, reaching 2× peak memory; the scratch buffer approach reduces this to 1×.
+
+Each heap pop yields the globally minimum remaining value across all segments. On nearly-sorted data with few long runs, k is small and this phase approaches O(n).
 
 ---
 
@@ -169,6 +172,8 @@ Together: early elements are processed with low confidence and frequent comparis
 
 This property is verified by the `cost_curve_entropy_decreases` test, which simulates 100 Bayesian updates and asserts that entropy is non-increasing across the sequence.
 
+It is important to distinguish two levels of this property. The decreasing cost described here operates *within a single sort call* — the model starts weak and strengthens as each element is processed. This is not a cross-call learning property. Each invocation of `vision_sort` constructs a fresh model; there is no persistence between calls. The algorithm accelerates through its own execution, not through prior executions.
+
 ---
 
 ## 7. Adversarial Resistance
@@ -187,7 +192,7 @@ Formally: VisionSort is O(n log n) in all cases, with performance strictly bette
 
 **Timsort** detects runs and merges them adaptively. VisionSort generalizes this in two ways: it assigns independent disorder and entropy scores to each run (rather than treating all runs equivalently), and it applies prediction-based placement on high-disorder low-entropy segments rather than always falling back to comparison-based sorting.
 
-**Interpolation sort** places elements using a global linear interpolation estimate. VisionSort differs in two ways: it uses a multi-resolution anchor model rather than a single linear estimate, and it uses batch tentative placement with conflict resolution rather than single-element placement with immediate correction.
+**Interpolation sort** places elements using a global linear interpolation estimate. VisionSort differs in two ways: it uses a multi-resolution anchor model rather than a single linear estimate, and it uses bucket-local placement rather than single-element placement with immediate correction.
 
 **Samplesort** uses logarithmic sampling to estimate bucket boundaries before sorting. Phase 1 of VisionSort is structurally similar, but the sample is used as an adaptive prediction model rather than as a static bucket partitioner.
 
@@ -201,11 +206,13 @@ The closest conceptual relative is **learned index structures** (Kraska et al., 
 
 **The confidence threshold is a fixed parameter (0.7).** The optimal threshold likely varies by input distribution. An adaptive threshold that responds to the current model quality is a natural extension.
 
-**Phase 5 uses a snapshot-based k-way merge.** The segment data is copied into per-segment vectors before merging, which doubles peak memory usage. An in-place k-way merge would eliminate this overhead.
-
 **The formal complexity proof is incomplete.** The T(n, H) characterization is motivated by the algorithm's design but has not been proven with the rigor of a comparison lower bound proof. A formal proof that the expected comparison count is bounded by C(n, H) = n × H_max + O(n) is left as an open problem.
 
-**The model is not persisted across calls.** Each invocation of `vision_sort` constructs a fresh model. For applications that sort similar data repeatedly — logs, time-series, financial streams — persisting the model across calls would allow the cross-sort learning property: sort k+1 benefits from the distribution knowledge accumulated during sorts 1 through k.
+**The model is not persisted across calls.** Each invocation of `vision_sort` constructs a fresh model. For applications that sort similar data repeatedly — logs, time-series, financial streams — persisting the model across calls would allow the cross-sort learning property: sort k+1 benefits from the distribution knowledge accumulated during sorts 1 through k. This is explicitly not present in the current implementation.
+
+**The `Into<f64>` type constraint is intentional, not incidental.** VisionSort's prediction mechanism requires values to be mappable to a continuous numeric domain. This makes the algorithm well-suited for numeric data (integers, floats, timestamps, prices, IDs) and unsuitable for types that lack a meaningful total numeric order — arbitrary strings, composite keys, opaque hashes. Attempting to extend VisionSort to such types would require an order-preserving embedding into the reals, which is non-trivial and domain-specific. The constraint is a deliberate design boundary.
+
+**Cache behavior at extreme scale is unverified.** The bucket-local placement strategy in Phase 4 was designed to keep working sets within L1 cache (average bucket size √L). At n = 10M or above, the distribution of bucket sizes and the cost of the verification pass have not been profiled against a production sort. Benchmarking at this scale is the next required step before any production deployment claim.
 
 ---
 
@@ -213,7 +220,7 @@ The closest conceptual relative is **learned index structures** (Kraska et al., 
 
 VisionSort introduces a design principle not present in existing sorting algorithms: using each element placement to refine a predictive model that reduces the cost of future placements. This dual-purpose property produces a decreasing marginal cost curve, a complexity characterization parameterized by input entropy rather than size alone, and adversarial resistance via entropy-triggered fallback to proven worst-case algorithms.
 
-The algorithm is implemented in Rust, passes correctness verification at scale across six input classes, and includes a test that directly measures the decreasing entropy property.
+The algorithm is implemented in Rust, passes correctness verification at scale across six input classes, and includes a test that directly measures the decreasing entropy property. Two structural improvements over the initial implementation — bucket-local placement for cache efficiency and a ping-pong merge buffer for memory efficiency — are included in the current version.
 
 The core conceptual contribution is the framing: sorting as a perception problem rather than a comparison problem. The visual system's gestalt modeling and saccade-directed attention provide a principled basis for a class of algorithms that spend computation proportionally to local uncertainty rather than uniformly across the input.
 

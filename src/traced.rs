@@ -183,28 +183,27 @@ pub fn traced_sort(data: &mut [f64]) -> Vec<SortStep> {
             }
             SortRoute::PlacementSort => {
                 let len = end - start;
-                let mut output: Vec<Option<f64>> = vec![None; len];
-                let mut unplaced: Vec<f64> = Vec::new();
+                let b = ((len as f64).sqrt().ceil() as usize).max(1);
+                let mut buckets: Vec<Vec<f64>> = vec![Vec::new(); b];
+
                 let values: Vec<f64> = data[start..end].to_vec();
-
                 for &val in &values {
-                    let (predicted_pos, confidence) = model.predict(val);
-                    let slot = ((predicted_pos * (len - 1) as f64).round() as usize).min(len - 1);
-                    if confidence > 0.7 && output[slot].is_none() {
-                        output[slot] = Some(val);
-                        model.update(val, start + slot, n);
-                    } else {
-                        unplaced.push(val);
-                    }
+                    let (predicted_pos, _) = model.predict(val);
+                    let bucket_idx = ((predicted_pos * (b - 1) as f64).round() as usize).min(b - 1);
+                    buckets[bucket_idx].push(val);
                 }
 
-                introsort(&mut unplaced, depth_limit);
-                let mut gap_iter = unplaced.into_iter();
-                for slot in output.iter_mut() {
-                    if slot.is_none() { *slot = gap_iter.next(); }
+                for bucket in buckets.iter_mut() {
+                    insertion_sort(bucket);
                 }
-                for (i, val) in output.into_iter().enumerate() {
-                    if let Some(v) = val { data[start + i] = v; }
+
+                let mut write_pos = start;
+                for bucket in &buckets {
+                    for &val in bucket {
+                        data[write_pos] = val;
+                        model.update(val, write_pos, n);
+                        write_pos += 1;
+                    }
                 }
 
                 let slice = &mut data[start..end];
@@ -244,11 +243,11 @@ pub fn traced_sort(data: &mut [f64]) -> Vec<SortStep> {
     // ── Phase 5 — Integration ──
     sorted_ranges.sort_by_key(|&(s, _)| s);
 
-    if sorted_ranges.len() > 1 {
-        let segments_data: Vec<Vec<f64>> = sorted_ranges
-            .iter()
-            .map(|&(s, e)| data[s..e].to_vec())
-            .collect();
+    if sorted_ranges.len() == 1 {
+        let (s, e) = sorted_ranges[0];
+        if s == 0 && e == n {} // do nothing
+    } else if sorted_ranges.len() > 1 {
+        let scratch: Vec<f64> = data.to_vec();
 
         // Min-heap merge
         use std::collections::BinaryHeap;
@@ -256,8 +255,8 @@ pub fn traced_sort(data: &mut [f64]) -> Vec<SortStep> {
 
         struct HeapEntry {
             value: f64,
-            seg_idx: usize,
             pos: usize,
+            end: usize,
         }
         impl PartialEq for HeapEntry {
             fn eq(&self, other: &Self) -> bool { self.value == other.value }
@@ -275,27 +274,23 @@ pub fn traced_sort(data: &mut [f64]) -> Vec<SortStep> {
         }
 
         let mut heap: BinaryHeap<HeapEntry> = BinaryHeap::new();
-        for (seg_idx, seg) in segments_data.iter().enumerate() {
-            if !seg.is_empty() {
-                heap.push(HeapEntry { value: seg[0], seg_idx, pos: 1 });
+        for &(s, e) in &sorted_ranges {
+            if s < e {
+                heap.push(HeapEntry { value: scratch[s], pos: s + 1, end: e });
             }
         }
 
-        let mut output: Vec<f64> = Vec::with_capacity(n);
+        let mut out = 0;
         while let Some(entry) = heap.pop() {
-            output.push(entry.value);
-            let seg = &segments_data[entry.seg_idx];
-            if entry.pos < seg.len() {
+            data[out] = entry.value;
+            out += 1;
+            if entry.pos < entry.end {
                 heap.push(HeapEntry {
-                    value: seg[entry.pos],
-                    seg_idx: entry.seg_idx,
+                    value: scratch[entry.pos],
                     pos: entry.pos + 1,
+                    end: entry.end,
                 });
             }
-        }
-
-        for (i, val) in output.into_iter().enumerate() {
-            data[i] = val;
         }
     }
 

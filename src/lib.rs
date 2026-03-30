@@ -201,7 +201,7 @@ impl<T: PartialOrd + Into<f64> + Copy> VisionSort<T> {
         let sorted_ranges = self.phase4_fixate(data, &mut heap, &mut model);
         self.model = model;
 
-        // Phase 5 — Integration (true k-way merge)
+        // Phase 5 — Integration (ping-pong k-way merge)
         self.phase5_integrate(data, sorted_ranges);
     }
 
@@ -239,7 +239,6 @@ impl<T: PartialOrd + Into<f64> + Copy> VisionSort<T> {
             let seg_start = i;
 
             if i + 1 >= n {
-                // Single trailing element
                 segments.push(Segment {
                     start: seg_start, end: n,
                     disorder: 0.0, entropy: 1.0, route: SortRoute::Trivial,
@@ -248,12 +247,10 @@ impl<T: PartialOrd + Into<f64> + Copy> VisionSort<T> {
             }
 
             if data[i] > data[i + 1] {
-                // Descending run — walk to end, then reverse
                 while i + 1 < n && data[i] >= data[i + 1] { i += 1; }
-                i += 1; // exclusive end
+                i += 1;
                 data[seg_start..i].reverse();
             } else {
-                // Ascending run — walk to end
                 while i + 1 < n && data[i] <= data[i + 1] { i += 1; }
                 i += 1;
             }
@@ -285,7 +282,15 @@ impl<T: PartialOrd + Into<f64> + Copy> VisionSort<T> {
 
     // ────────────────────────────────────────────────
     // Phase 4 — Directed Fixation
-    // Returns sorted segment ranges for phase 5.
+    //
+    // Processes segments in priority order (highest disorder × entropy × length first).
+    //
+    // PlacementSort uses bucket-local placement to preserve cache locality:
+    // rather than predicting a global slot across the full segment (which causes
+    // random memory access at large n), we divide the segment into B = ceil(sqrt(L))
+    // buckets, assign each element to a bucket via a coarse model prediction,
+    // then sort each small bucket with insertion sort. Each bucket fits in
+    // cache, eliminating the cache-miss problem of global slot prediction.
     // ────────────────────────────────────────────────
     fn phase4_fixate(
         &self,
@@ -309,34 +314,53 @@ impl<T: PartialOrd + Into<f64> + Copy> VisionSort<T> {
                     if violations { Self::insertion_sort(slice); }
                 }
                 SortRoute::PlacementSort => {
-                    let len = seg.end - seg.start;
-                    let mut output: Vec<Option<T>> = vec![None; len];
-                    let mut unplaced: Vec<T> = Vec::new();
-                    let values: Vec<T> = data[seg.start..seg.end].to_vec();
+                    // ── Bucket-local placement ──────────────────────────────
+                    //
+                    // Fix: the previous global-slot approach predicted a position
+                    // anywhere in [0, len) and wrote to it directly. At large n
+                    // this means random memory access across the full segment,
+                    // causing cache misses on every placement.
+                    //
+                    // New approach: divide the segment into B = ceil(sqrt(L))
+                    // buckets. Each element gets a coarse bucket assignment via
+                    // model.predict(). Elements within the same bucket are
+                    // contiguous in memory. Each bucket is independently sorted
+                    // with insertion sort, which is cache-optimal on small
+                    // arrays. Average bucket size is sqrt(L) — well within L1.
+                    //
+                    // Model updates still happen after each placement so the
+                    // Bayesian refinement property is preserved.
 
+                    let len = seg.end - seg.start;
+                    let b = ((len as f64).sqrt().ceil() as usize).max(1);
+                    let mut buckets: Vec<Vec<T>> = vec![Vec::new(); b];
+
+                    // Assign each element to a bucket
+                    let values: Vec<T> = data[seg.start..seg.end].to_vec();
                     for &val in &values {
-                        let (predicted_pos, confidence) = model.predict(val.into());
-                        let slot = ((predicted_pos * (len - 1) as f64).round() as usize)
-                            .min(len - 1);
-                        if confidence > 0.7 && output[slot].is_none() {
-                            output[slot] = Some(val);
-                            model.update(val.into(), seg.start + slot, n);
-                        } else {
-                            unplaced.push(val);
+                        let (predicted_pos, _) = model.predict(val.into());
+                        let bucket_idx = ((predicted_pos * (b - 1) as f64).round() as usize)
+                            .min(b - 1);
+                        buckets[bucket_idx].push(val);
+                    }
+
+                    // Sort each bucket with insertion sort — small, cache-local
+                    for bucket in buckets.iter_mut() {
+                        Self::insertion_sort(bucket);
+                    }
+
+                    // Write sorted buckets back sequentially and update model
+                    let mut write_pos = seg.start;
+                    for bucket in &buckets {
+                        for &val in bucket {
+                            data[write_pos] = val;
+                            model.update(val.into(), write_pos, n);
+                            write_pos += 1;
                         }
                     }
 
-                    // Sort only the unplaced minority — the novel cost reduction
-                    Self::introsort(&mut unplaced, depth_limit);
-                    let mut gap_iter = unplaced.into_iter();
-                    for slot in output.iter_mut() {
-                        if slot.is_none() { *slot = gap_iter.next(); }
-                    }
-                    for (i, val) in output.into_iter().enumerate() {
-                        if let Some(v) = val { data[seg.start + i] = v; }
-                    }
-
-                    // Verification — cheap since array is near-sorted
+                    // Verification pass — fix any cross-bucket boundary violations
+                    // (cheap: the array is nearly sorted, insertion sort is O(n) here)
                     let slice = &mut data[seg.start..seg.end];
                     let violations = (1..slice.len()).any(|i| slice[i - 1] > slice[i]);
                     if violations { Self::insertion_sort(slice); }
@@ -353,35 +377,36 @@ impl<T: PartialOrd + Into<f64> + Copy> VisionSort<T> {
     }
 
     // ────────────────────────────────────────────────
-    // Phase 5 — Integration (true k-way merge)
+    // Phase 5 — Integration (ping-pong k-way merge)
     //
     // Merges all sorted segments in O(n log k) using a min-heap.
-    // Segments are tiled across the array — no gaps, no overlaps.
+    //
+    // Memory fix: one scratch buffer of exactly n elements — 1x peak overhead,
+    // down from the previous 2x snapshot approach.
+    // Previous: n elements spread across k per-segment Vecs + n-element output = 2n.
+    // Now: one scratch copy of data (n elements). HeapEntries hold absolute
+    // positions into scratch, eliminating all per-segment allocation.
     // ────────────────────────────────────────────────
     fn phase5_integrate(&self, data: &mut [T], mut sorted_ranges: Vec<(usize, usize)>) {
         let n = data.len();
         if sorted_ranges.is_empty() { return; }
 
-        // Sort ranges by start position — they tile the array
         sorted_ranges.sort_by_key(|&(s, _)| s);
 
-        // Single segment covering the whole array — already done
+        // Single segment covering the whole array — already sorted
         if sorted_ranges.len() == 1 {
             let (s, e) = sorted_ranges[0];
             if s == 0 && e == n { return; }
         }
 
-        // Snapshot each segment (we need to read while writing output)
-        let segments_data: Vec<Vec<T>> = sorted_ranges
-            .iter()
-            .map(|&(s, e)| data[s..e].to_vec())
-            .collect();
+        // One scratch copy — 1x peak memory
+        let scratch: Vec<T> = data.to_vec();
 
-        // Min-heap entry: smallest value wins each pop
+        // Min-heap entry: tracks absolute position in scratch
         struct HeapEntry<T> {
             value: T,
-            seg_idx: usize,
-            pos: usize,
+            pos: usize,   // next position to read from scratch
+            end: usize,   // exclusive end of this segment
         }
         impl<T: PartialOrd> PartialEq for HeapEntry<T> {
             fn eq(&self, other: &Self) -> bool { self.value == other.value }
@@ -389,8 +414,7 @@ impl<T: PartialOrd + Into<f64> + Copy> VisionSort<T> {
         impl<T: PartialOrd> Eq for HeapEntry<T> {}
         impl<T: PartialOrd> PartialOrd for HeapEntry<T> {
             fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                // Reverse: BinaryHeap is a max-heap, we want min
-                other.value.partial_cmp(&self.value)
+                other.value.partial_cmp(&self.value) // min-heap
             }
         }
         impl<T: PartialOrd> Ord for HeapEntry<T> {
@@ -399,31 +423,26 @@ impl<T: PartialOrd + Into<f64> + Copy> VisionSort<T> {
             }
         }
 
-        // Seed heap with the first element from each segment
+        // Seed heap with the first element of each segment
         let mut heap: BinaryHeap<HeapEntry<T>> = BinaryHeap::new();
-        for (seg_idx, seg) in segments_data.iter().enumerate() {
-            if !seg.is_empty() {
-                heap.push(HeapEntry { value: seg[0], seg_idx, pos: 1 });
+        for &(s, e) in &sorted_ranges {
+            if s < e {
+                heap.push(HeapEntry { value: scratch[s], pos: s + 1, end: e });
             }
         }
 
-        // Drain heap — each pop is the globally minimum remaining value
-        let mut output: Vec<T> = Vec::with_capacity(n);
+        // Drain heap directly into data — no second output buffer
+        let mut out = 0;
         while let Some(entry) = heap.pop() {
-            output.push(entry.value);
-            let seg = &segments_data[entry.seg_idx];
-            if entry.pos < seg.len() {
+            data[out] = entry.value;
+            out += 1;
+            if entry.pos < entry.end {
                 heap.push(HeapEntry {
-                    value: seg[entry.pos],
-                    seg_idx: entry.seg_idx,
+                    value: scratch[entry.pos],
                     pos: entry.pos + 1,
+                    end: entry.end,
                 });
             }
-        }
-
-        // Write merged result back
-        for (i, val) in output.into_iter().enumerate() {
-            data[i] = val;
         }
     }
 
@@ -540,8 +559,6 @@ mod tests {
         data
     }
 
-    // ── Unit tests ──────────────────────────────
-
     #[test]
     fn test_empty() {
         let mut data: Vec<f64> = vec![];
@@ -609,11 +626,8 @@ mod tests {
         assert_eq!(data, vec![1.0, 2.0]);
     }
 
-    // ── Stress tests ────────────────────────────
-
     #[test]
     fn stress_random_1k() {
-        // Deterministic LCG so test is reproducible
         let mut data: Vec<f64> = lcg_sequence(1000, 42)
             .iter().map(|&x| x as f64).collect();
         let expected = std_sorted(data.clone());
@@ -632,7 +646,6 @@ mod tests {
 
     #[test]
     fn stress_nearly_sorted_10k() {
-        // Sorted with ~2% random swaps
         let mut data: Vec<f64> = (0..10_000).map(|x| x as f64).collect();
         let swaps = lcg_sequence(200, 7);
         for i in (0..swaps.len()).step_by(2) {
@@ -655,7 +668,6 @@ mod tests {
 
     #[test]
     fn stress_clustered_10k() {
-        // Values cluster in 5 tight bands — low entropy per segment
         let bands = [100.0_f64, 200.0, 300.0, 400.0, 500.0];
         let seq = lcg_sequence(10_000, 13);
         let mut data: Vec<f64> = seq.iter().enumerate()
@@ -675,10 +687,6 @@ mod tests {
         assert_eq!(data, expected, "duplicates 10k failed");
     }
 
-    // ── Cost curve test ──────────────────────────
-    // Verifies that the model's entropy decreases monotonically
-    // as observations accumulate — the "speeds up as it runs" property.
-
     #[test]
     fn cost_curve_entropy_decreases() {
         let data: Vec<f64> = lcg_sequence(1000, 42)
@@ -689,7 +697,6 @@ mod tests {
 
         let initial_entropy = sorter.model.entropy;
 
-        // Simulate 100 Bayesian updates
         let n = data.len();
         let samples = lcg_sequence(100, 7);
         for (i, &s) in samples.iter().enumerate() {
@@ -706,9 +713,6 @@ mod tests {
         );
     }
 
-    // ── Helpers ─────────────────────────────────
-
-    /// Deterministic LCG sequence — reproducible across runs
     fn lcg_sequence(n: usize, seed: u64) -> Vec<usize> {
         let mut state = seed;
         (0..n).map(|_| {
