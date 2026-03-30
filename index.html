@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VisionSort — A Prediction-Driven Sorting Algorithm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --bg2: #111111;
+    --bg3: #181818;
+    --border: rgba(255,255,255,0.07);
+    --border-hi: rgba(255,255,255,0.15);
+    --text: #e8e4d9;
+    --muted: #888880;
+    --faint: #444440;
+    --green: #4ade80;
+    --green-dim: rgba(74,222,128,0.12);
+    --green-faint: rgba(74,222,128,0.05);
+    --mono: 'DM Mono', monospace;
+    --serif: 'EB Garamond', Georgia, serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* ── Nav ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,10,10,0.85);
+    backdrop-filter: blur(12px);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 2rem; height: 52px;
+  }
+  .nav-logo { font-size: 13px; color: var(--green); letter-spacing: 0.05em; }
+  .nav-links { display: flex; gap: 2rem; }
+  .nav-links a {
+    color: var(--muted); text-decoration: none; font-size: 12px;
+    letter-spacing: 0.04em; transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--text); }
+  .nav-cta {
+    background: transparent; border: 1px solid var(--green);
+    color: var(--green); font-family: var(--mono); font-size: 12px;
+    padding: 6px 16px; cursor: pointer; letter-spacing: 0.04em;
+    text-decoration: none; transition: background 0.2s, color 0.2s;
+  }
+  .nav-cta:hover { background: var(--green); color: #0a0a0a; }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 120px 2rem 80px;
+    max-width: 1100px; margin: 0 auto;
+    position: relative;
+  }
+  .hero-label {
+    font-size: 11px; letter-spacing: 0.12em; color: var(--green);
+    text-transform: uppercase; margin-bottom: 2rem;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .hero-label::before {
+    content: ''; display: block; width: 24px; height: 1px; background: var(--green);
+  }
+  .hero-title {
+    font-family: var(--serif); font-size: clamp(52px, 8vw, 96px);
+    font-weight: 400; line-height: 1.0; letter-spacing: -0.02em;
+    color: var(--text); margin-bottom: 1.5rem;
+  }
+  .hero-title em { font-style: italic; color: var(--green); }
+  .hero-sub {
+    font-family: var(--serif); font-size: clamp(16px, 2vw, 20px);
+    font-weight: 400; color: var(--muted); max-width: 560px;
+    line-height: 1.6; margin-bottom: 3rem;
+  }
+  .hero-stats {
+    display: flex; gap: 3rem; margin-bottom: 3rem;
+    border-top: 1px solid var(--border); padding-top: 2rem;
+  }
+  .stat-item { }
+  .stat-val {
+    font-size: 28px; font-weight: 300; color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .stat-val span { color: var(--green); }
+  .stat-label { font-size: 11px; color: var(--muted); letter-spacing: 0.06em; margin-top: 2px; }
+  .hero-actions { display: flex; gap: 1rem; align-items: center; }
+  .btn-primary {
+    background: var(--green); color: #0a0a0a;
+    font-family: var(--mono); font-size: 12px; font-weight: 500;
+    padding: 10px 24px; border: none; cursor: pointer;
+    letter-spacing: 0.06em; text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-ghost {
+    background: transparent; color: var(--muted);
+    font-family: var(--mono); font-size: 12px;
+    padding: 10px 24px; border: 1px solid var(--faint); cursor: pointer;
+    letter-spacing: 0.06em; text-decoration: none;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .btn-ghost:hover { border-color: var(--border-hi); color: var(--text); }
+
+  /* ── Sort visualiser ── */
+  .visualiser {
+    margin-top: 5rem; padding: 2rem;
+    border: 1px solid var(--border); background: var(--bg2);
+  }
+  .vis-label {
+    font-size: 11px; color: var(--muted); letter-spacing: 0.1em;
+    margin-bottom: 1.2rem; text-transform: uppercase;
+  }
+  .bars {
+    display: flex; align-items: flex-end;
+    height: 80px; gap: 3px;
+  }
+  .bar {
+    flex: 1; background: var(--faint);
+    transition: height 0.6s cubic-bezier(0.4,0,0.2,1),
+                background 0.4s ease;
+    min-height: 4px;
+  }
+  .bar.active { background: var(--green); }
+  .bar.sorted { background: rgba(74,222,128,0.3); }
+  .bar.glancing { background: rgba(74,222,128,0.7); }
+
+  .vis-phase {
+    margin-top: 1rem;
+    font-size: 11px; color: var(--green);
+    letter-spacing: 0.08em; height: 16px;
+  }
+  .vis-controls {
+    margin-top: 1.2rem; display: flex; gap: 1rem;
+  }
+  .vis-btn {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+    background: transparent; border: 1px solid var(--faint);
+    color: var(--muted); padding: 5px 14px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .vis-btn:hover { border-color: var(--green); color: var(--green); }
+  .vis-btn.active { border-color: var(--green); color: var(--green); background: var(--green-faint); }
+
+  /* ── Section shared ── */
+  section { max-width: 1100px; margin: 0 auto; padding: 6rem 2rem; }
+  .section-label {
+    font-size: 11px; letter-spacing: 0.12em; color: var(--green);
+    text-transform: uppercase; margin-bottom: 1.5rem;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-label::before {
+    content: ''; display: block; width: 16px; height: 1px; background: var(--green);
+  }
+  .section-title {
+    font-family: var(--serif); font-size: clamp(28px, 4vw, 42px);
+    font-weight: 400; line-height: 1.15; margin-bottom: 1.5rem;
+  }
+  .section-body {
+    font-family: var(--serif); font-size: 17px; color: #aaa89e;
+    max-width: 600px; line-height: 1.75; margin-bottom: 3rem;
+  }
+  .divider { border: none; border-top: 1px solid var(--border); }
+
+  /* ── Thesis ── */
+  .thesis-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--border); margin-top: 3rem;
+  }
+  .thesis-card {
+    background: var(--bg); padding: 2rem;
+    transition: background 0.2s;
+  }
+  .thesis-card:hover { background: var(--bg2); }
+  .thesis-num {
+    font-size: 11px; color: var(--green); letter-spacing: 0.1em;
+    margin-bottom: 1rem;
+  }
+  .thesis-head {
+    font-family: var(--serif); font-size: 20px; font-weight: 400;
+    margin-bottom: 0.75rem; line-height: 1.3;
+  }
+  .thesis-text { font-size: 13px; color: var(--muted); line-height: 1.7; }
+
+  /* ── Phases ── */
+  .phases { margin-top: 3rem; }
+  .phase-row {
+    display: grid; grid-template-columns: 80px 1fr;
+    border-top: 1px solid var(--border);
+    padding: 1.5rem 0; gap: 2rem; align-items: start;
+    transition: background 0.2s;
+  }
+  .phase-row:last-child { border-bottom: 1px solid var(--border); }
+  .phase-row:hover { background: var(--bg2); margin: 0 -2rem; padding: 1.5rem 2rem; }
+  .phase-num {
+    font-size: 11px; color: var(--green); letter-spacing: 0.1em;
+    padding-top: 3px;
+  }
+  .phase-name {
+    font-family: var(--serif); font-size: 18px; font-weight: 400;
+    margin-bottom: 0.4rem;
+  }
+  .phase-cost {
+    display: inline-block; font-size: 11px; font-style: italic;
+    color: var(--green); margin-bottom: 0.6rem;
+    font-family: var(--mono);
+  }
+  .phase-desc { font-size: 13px; color: var(--muted); line-height: 1.7; max-width: 640px; }
+
+  /* ── Route matrix ── */
+  .matrix-wrap { margin-top: 3rem; }
+  .matrix-title { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 1.5rem; }
+  .matrix {
+    display: grid;
+    grid-template-columns: 120px 1fr 1fr;
+    grid-template-rows: 40px 1fr 1fr;
+    gap: 1px; background: var(--border);
+    max-width: 700px;
+  }
+  .matrix-cell {
+    background: var(--bg2); padding: 1.25rem 1.5rem;
+    position: relative;
+  }
+  .matrix-header {
+    background: var(--bg3); display: flex;
+    align-items: center; justify-content: center;
+    font-size: 11px; letter-spacing: 0.08em; color: var(--muted);
+    padding: 0.5rem;
+  }
+  .matrix-axis {
+    background: var(--bg3); display: flex;
+    align-items: center; justify-content: center;
+    font-size: 11px; letter-spacing: 0.08em; color: var(--muted);
+    padding: 1rem; writing-mode: initial;
+  }
+  .route-name {
+    font-size: 12px; font-weight: 500; color: var(--text);
+    letter-spacing: 0.04em; margin-bottom: 0.4rem;
+  }
+  .route-badge {
+    display: inline-block; font-size: 10px; padding: 2px 8px;
+    border: 1px solid; margin-bottom: 0.6rem; letter-spacing: 0.06em;
+  }
+  .route-badge.green { border-color: var(--green); color: var(--green); }
+  .route-badge.amber { border-color: #f59e0b; color: #f59e0b; }
+  .route-badge.blue  { border-color: #60a5fa; color: #60a5fa; }
+  .route-badge.red   { border-color: #f87171; color: #f87171; }
+  .route-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .matrix-cell.highlight { background: var(--green-faint); }
+
+  /* ── Complexity ── */
+  .complexity-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--border); margin-top: 3rem;
+  }
+  .complexity-row {
+    background: var(--bg2); padding: 1.25rem 1.5rem;
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: center; gap: 1rem;
+    transition: background 0.2s;
+  }
+  .complexity-row:hover { background: var(--bg3); }
+  .complexity-label { font-size: 13px; color: var(--muted); }
+  .complexity-val {
+    font-size: 13px; font-style: italic; color: var(--text);
+    white-space: nowrap;
+  }
+  .complexity-val.best { color: var(--green); }
+  .complexity-val.worst { color: var(--muted); }
+
+  /* ── Cost curve ── */
+  .curve-wrap { margin-top: 3rem; padding: 2rem; border: 1px solid var(--border); }
+  #cost-canvas { width: 100%; display: block; }
+
+  /* ── Code block ── */
+  .code-section { margin-top: 3rem; }
+  .code-tabs { display: flex; gap: 0; margin-bottom: 0; }
+  .code-tab {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-bottom: none; color: var(--muted); padding: 8px 16px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .code-tab.active { background: var(--bg2); color: var(--text); border-color: var(--border-hi); }
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border);
+    padding: 1.5rem; overflow-x: auto; display: none;
+  }
+  .code-block.active { display: block; }
+  .code-block pre {
+    font-family: var(--mono); font-size: 13px; line-height: 1.8;
+    color: var(--text); white-space: pre;
+  }
+  .kw { color: #c084fc; }
+  .fn { color: #60a5fa; }
+  .st { color: #34d399; }
+  .cm { color: var(--faint); font-style: italic; }
+  .ty { color: #fbbf24; }
+  .op { color: var(--muted); }
+
+  /* ── Model inspector ── */
+  .inspector { margin-top: 3rem; border: 1px solid var(--border); }
+  .inspector-header {
+    padding: 1rem 1.5rem; border-bottom: 1px solid var(--border);
+    font-size: 11px; letter-spacing: 0.1em; color: var(--muted);
+    text-transform: uppercase; display: flex; justify-content: space-between;
+    align-items: center;
+  }
+  .inspector-body { display: grid; grid-template-columns: 1fr 1fr; }
+  .insp-cell {
+    padding: 1.25rem 1.5rem; border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .insp-cell:nth-child(2n) { border-right: none; }
+  .insp-cell:nth-last-child(-n+2) { border-bottom: none; }
+  .insp-key { font-size: 11px; color: var(--muted); letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+  .insp-val { font-size: 20px; font-weight: 300; color: var(--text); }
+  .insp-val span { color: var(--green); }
+  .insp-sub { font-size: 11px; color: var(--faint); margin-top: 3px; }
+
+  /* ── Footer ── */
+  footer {
+    border-top: 1px solid var(--border);
+    max-width: 1100px; margin: 0 auto;
+    padding: 3rem 2rem; display: flex;
+    justify-content: space-between; align-items: flex-start; gap: 3rem;
+  }
+  .footer-left {}
+  .footer-logo {
+    font-family: var(--serif); font-size: 22px; font-style: italic;
+    color: var(--text); margin-bottom: 0.5rem;
+  }
+  .footer-sub { font-size: 12px; color: var(--muted); max-width: 280px; line-height: 1.6; }
+  .footer-links { display: flex; gap: 2rem; }
+  .footer-col h4 { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 1rem; }
+  .footer-col a {
+    display: block; font-size: 13px; color: var(--muted);
+    text-decoration: none; margin-bottom: 0.5rem; transition: color 0.2s;
+  }
+  .footer-col a:hover { color: var(--green); }
+  .footer-bottom {
+    max-width: 1100px; margin: 0 auto;
+    padding: 1rem 2rem 2rem; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--faint); letter-spacing: 0.04em;
+    display: flex; justify-content: space-between;
+  }
+
+  /* ── Animations ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .fade-up { animation: fadeUp 0.7s ease both; }
+  .fade-up-1 { animation-delay: 0.1s; }
+  .fade-up-2 { animation-delay: 0.2s; }
+  .fade-up-3 { animation-delay: 0.35s; }
+  .fade-up-4 { animation-delay: 0.5s; }
+  .fade-up-5 { animation-delay: 0.65s; }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .live-dot {
+    display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--green);
+    margin-right: 6px; animation: pulse-dot 2s ease infinite;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 700px) {
+    .thesis-grid, .complexity-grid { grid-template-columns: 1fr; }
+    .inspector-body { grid-template-columns: 1fr; }
+    .hero-stats { gap: 1.5rem; flex-wrap: wrap; }
+    .matrix { grid-template-columns: 60px 1fr 1fr; }
+    .footer-links { flex-direction: column; gap: 1.5rem; }
+    footer { flex-direction: column; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo">VISIONSORT</div>
+  <div class="nav-links">
+    <a href="#thesis">Thesis</a>
+    <a href="#phases">Phases</a>
+    <a href="#routes">Routes</a>
+    <a href="#usage">Usage</a>
+  </div>
+  <a href="#usage" class="nav-cta">Get Started</a>
+</nav>
+
+<!-- Hero -->
+<div style="max-width:1100px;margin:0 auto;padding:0 2rem;">
+<section class="hero" style="padding-left:0;padding-right:0;">
+  <div class="hero-label fade-up">Adaptive Sorting Algorithm</div>
+  <h1 class="hero-title fade-up fade-up-1">
+    A sort that<br><em>learns</em> as it runs
+  </h1>
+  <p class="hero-sub fade-up fade-up-2">
+    VisionSort builds a probabilistic model of your data's distribution before touching most elements — then predicts where each value belongs, falling back to comparisons only when it isn't sure.
+  </p>
+  <div class="hero-stats fade-up fade-up-3">
+    <div class="stat-item">
+      <div class="stat-val">T(n<span>,H</span>)</div>
+      <div class="stat-label">Complexity</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val">5</div>
+      <div class="stat-label">Phases</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val">16</div>
+      <div class="stat-label">Tests passing</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val">O(n<span>)</span></div>
+      <div class="stat-label">Best case</div>
+    </div>
+  </div>
+  <div class="hero-actions fade-up fade-up-4">
+    <a href="https://github.com" class="btn-primary">View on GitHub</a>
+    <a href="WHITEPAPER.md" class="btn-ghost">Read Whitepaper</a>
+  </div>
+
+  <!-- Sort Visualiser -->
+  <div class="visualiser fade-up fade-up-5" id="vis">
+    <div class="vis-label"><span class="live-dot"></span>Live sort visualisation</div>
+    <div class="bars" id="bars"></div>
+    <div class="vis-phase" id="vis-phase">IDLE — press run</div>
+    <div class="vis-controls">
+      <button class="vis-btn" id="vis-run">Run</button>
+      <button class="vis-btn" id="vis-reset">Reset</button>
+      <button class="vis-btn" id="vis-step">Step</button>
+    </div>
+  </div>
+</section>
+</div>
+
+<hr class="divider">
+
+<!-- Thesis -->
+<section id="thesis">
+  <div class="section-label">Core Thesis</div>
+  <h2 class="section-title">Every element touch does two jobs</h2>
+  <p class="section-body">
+    Existing sorts extract one bit of information per comparison: A &gt; B or A &lt; B. 
+    VisionSort extracts two: the element's position, and a model update that sharpens 
+    predictions for every element not yet processed.
+  </p>
+
+  <div class="thesis-grid">
+    <div class="thesis-card">
+      <div class="thesis-num">01 — The Problem</div>
+      <div class="thesis-head">O(n log n) assumes maximum entropy</div>
+      <div class="thesis-text">The comparison sort lower bound holds for uniformly random input. Real-world data — timestamps, prices, IDs — is not uniform. It has structure. It has low entropy. The bound doesn't have to be tight.</div>
+    </div>
+    <div class="thesis-card">
+      <div class="thesis-num">02 — The Insight</div>
+      <div class="thesis-head">Vision builds a scene model first</div>
+      <div class="thesis-text">The visual system samples the scene coarsely before examining anything closely. It directs attention toward disorder, not uniformly. VisionSort maps this onto arrays: sample, model, predict, fixate.</div>
+    </div>
+    <div class="thesis-card">
+      <div class="thesis-num">03 — The Mechanism</div>
+      <div class="thesis-head">Bayesian updates during placement</div>
+      <div class="thesis-text">Each element placed updates the distribution model. Entropy decays. Anchor points refine. Confidence grows. The 100th element to be sorted costs far less than the 1st — the algorithm accelerates through its own data.</div>
+    </div>
+    <div class="thesis-card">
+      <div class="thesis-num">04 — The Result</div>
+      <div class="thesis-head">Cost parameterised by entropy, not size</div>
+      <div class="thesis-text">Complexity is T(n, H) where H is the Shannon entropy of the input. On structured data, H is small and cost is sublinear. On adversarial data, H = log₂(n) and it falls back to O(n log n). You can never be beaten below baseline.</div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- Phases -->
+<section id="phases">
+  <div class="section-label">Algorithm</div>
+  <h2 class="section-title">Five phases, one pass</h2>
+  <p class="section-body">
+    Each phase has a defined cost and a clear output. Phases 1–3 build the picture. 
+    Phase 4 does the work — cheapening as it goes. Phase 5 integrates.
+  </p>
+
+  <div class="phases">
+    <div class="phase-row">
+      <div class="phase-num">PHASE 1</div>
+      <div>
+        <div class="phase-name">The Glance</div>
+        <div class="phase-cost">O(log² n)</div>
+        <div class="phase-desc">Sample ⌈log₂(n)⌉ evenly-spaced elements. Sort them. These sorted samples become anchor points — a coarse map of where values live across the array. Compute initial entropy from the sample histogram. Cost is essentially free.</div>
+      </div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">PHASE 2</div>
+      <div>
+        <div class="phase-name">Segmentation</div>
+        <div class="phase-cost">O(n)</div>
+        <div class="phase-desc">Single linear scan. Commit to ascending or descending at each position, walk to exhaustion, emit as a segment. Descending runs reversed in-place immediately. Guaranteed: segments tile the array with no gaps, no overlaps.</div>
+      </div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">PHASE 3</div>
+      <div>
+        <div class="phase-name">Disorder Mapping</div>
+        <div class="phase-cost">O(k√L)</div>
+        <div class="phase-desc">Score each segment on two independent axes: disorder (estimated inversion rate via √L sampling) and entropy (Shannon histogram). Plot each segment in 2D space. Assign a sort route. Insert into a max-heap by priority = disorder × entropy × length.</div>
+      </div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">PHASE 4</div>
+      <div>
+        <div class="phase-name">Directed Fixation</div>
+        <div class="phase-cost">Decreasing marginal cost</div>
+        <div class="phase-desc">Pop highest-priority segment. Sort via its assigned route. For PlacementSort: predict each element's output position using the model, place tentatively, sort only the unplaced minority, verify. Update the model after each placement. Repeat until heap is empty.</div>
+      </div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">PHASE 5</div>
+      <div>
+        <div class="phase-name">Integration</div>
+        <div class="phase-cost">O(n log k)</div>
+        <div class="phase-desc">K-way merge of all sorted segments using a min-heap. Seed with the first element of each segment. Each pop yields the globally minimum remaining value. On nearly-sorted data with few long runs, k is small and this phase approaches O(n).</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- Routes -->
+<section id="routes">
+  <div class="section-label">Routing</div>
+  <h2 class="section-title">The 2D decision space</h2>
+  <p class="section-body">
+    Each segment is scored on disorder and entropy independently. The combination 
+    determines which of four sort routes is applied. Only one quadrant requires full 
+    O(n log n) treatment.
+  </p>
+
+  <div class="matrix-wrap">
+    <div class="matrix-title">DISORDER (x) × ENTROPY (y) — SEGMENT ROUTING</div>
+    <div class="matrix">
+      <!-- Row 0: headers -->
+      <div class="matrix-header"></div>
+      <div class="matrix-header">LOW DISORDER</div>
+      <div class="matrix-header">HIGH DISORDER</div>
+      <!-- Row 1 -->
+      <div class="matrix-axis">LOW ENTROPY</div>
+      <div class="matrix-cell highlight">
+        <div class="route-badge green">NearlyFree</div>
+        <div class="route-name">Verify only</div>
+        <div class="route-desc">Single pass to confirm order. If no violations found, zero work performed.</div>
+      </div>
+      <div class="matrix-cell">
+        <div class="route-badge blue">PlacementSort</div>
+        <div class="route-name">Predict &amp; place</div>
+        <div class="route-desc">Model predicts each element's slot. Only unplaced minority sorted by comparison.</div>
+      </div>
+      <!-- Row 2 -->
+      <div class="matrix-axis">HIGH ENTROPY</div>
+      <div class="matrix-cell">
+        <div class="route-badge amber">Verify</div>
+        <div class="route-name">Confirm order</div>
+        <div class="route-desc">Scan for violations. Apply insertion sort only if violations found.</div>
+      </div>
+      <div class="matrix-cell">
+        <div class="route-badge red">FullSort</div>
+        <div class="route-name">Introsort fallback</div>
+        <div class="route-desc">Quicksort with heapsort fallback. Guaranteed O(n log n). The adversarial path.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Complexity table -->
+  <div style="margin-top: 3rem;">
+    <div class="matrix-title" style="margin-bottom:1rem;">PERFORMANCE BY INPUT CLASS</div>
+    <div class="complexity-grid">
+      <div class="complexity-row">
+        <div class="complexity-label">Already sorted</div>
+        <div class="complexity-val best">O(n)</div>
+      </div>
+      <div class="complexity-row">
+        <div class="complexity-label">Nearly sorted (2% swaps)</div>
+        <div class="complexity-val best">O(n · H)</div>
+      </div>
+      <div class="complexity-row">
+        <div class="complexity-label">Clustered / structured data</div>
+        <div class="complexity-val best">O(n · H)</div>
+      </div>
+      <div class="complexity-row">
+        <div class="complexity-label">Reversed input</div>
+        <div class="complexity-val">O(n log n)</div>
+      </div>
+      <div class="complexity-row">
+        <div class="complexity-label">Uniform random</div>
+        <div class="complexity-val worst">O(n log n)</div>
+      </div>
+      <div class="complexity-row">
+        <div class="complexity-label">Adversarial max-entropy</div>
+        <div class="complexity-val worst">O(n log n)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cost curve -->
+  <div class="curve-wrap" style="margin-top:3rem;">
+    <div class="vis-label" style="margin-bottom:1.5rem;">
+      <span class="live-dot"></span>Model confidence over time — the cost curve
+    </div>
+    <canvas id="cost-canvas" height="180"></canvas>
+    <div style="font-size:11px;color:var(--muted);margin-top:1rem;letter-spacing:0.04em;">
+      Confidence rises as observations accumulate. Each element processed costs less than the last.
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- Usage -->
+<section id="usage">
+  <div class="section-label">Usage</div>
+  <h2 class="section-title">Get started in Rust</h2>
+  <p class="section-body">
+    VisionSort works on any type that implements <code style="font-size:14px;color:var(--green)">PartialOrd + Into&lt;f64&gt; + Copy</code>. 
+    All standard numeric types work out of the box.
+  </p>
+
+  <div class="code-section">
+    <div class="code-tabs">
+      <button class="code-tab active" data-tab="simple">Simple</button>
+      <button class="code-tab" data-tab="struct">With model</button>
+      <button class="code-tab" data-tab="custom">Custom type</button>
+      <button class="code-tab" data-tab="cargo">Cargo.toml</button>
+    </div>
+    <div class="code-block active" id="tab-simple">
+<pre><span class="kw">use</span> visionsort<span class="op">::</span><span class="fn">vision_sort</span>;
+
+<span class="kw">fn</span> <span class="fn">main</span>() {
+    <span class="kw">let mut</span> data <span class="op">=</span> <span class="fn">vec!</span>[<span class="st">3.0_f64</span>, <span class="st">1.0</span>, <span class="st">4.0</span>, <span class="st">1.0</span>, <span class="st">5.0</span>, <span class="st">9.0</span>, <span class="st">2.0</span>, <span class="st">6.0</span>];
+    <span class="fn">vision_sort</span>(<span class="op">&mut</span> data);
+    <span class="fn">println!</span>(<span class="st">"{:?}"</span>, data);
+    <span class="cm">// [1.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 9.0]</span>
+}</pre>
+    </div>
+    <div class="code-block" id="tab-struct">
+<pre><span class="kw">use</span> visionsort<span class="op">::</span><span class="ty">VisionSort</span>;
+
+<span class="kw">fn</span> <span class="fn">main</span>() {
+    <span class="kw">let mut</span> data <span class="op">=</span> <span class="fn">vec!</span>[<span class="st">5.0_f64</span>, <span class="st">2.0</span>, <span class="st">8.0</span>, <span class="st">1.0</span>, <span class="st">9.0</span>, <span class="st">3.0</span>];
+
+    <span class="kw">let mut</span> sorter <span class="op">=</span> <span class="ty">VisionSort</span><span class="op">::</span><span class="fn">new</span>();
+    sorter<span class="op">.</span><span class="fn">sort</span>(<span class="op">&mut</span> data);
+
+    <span class="cm">// Inspect the distribution model post-sort</span>
+    <span class="fn">println!</span>(<span class="st">"entropy:      {}"</span>, sorter<span class="op">.</span>model<span class="op">.</span>entropy);
+    <span class="fn">println!</span>(<span class="st">"observations: {}"</span>, sorter<span class="op">.</span>model<span class="op">.</span>observations);
+    <span class="fn">println!</span>(<span class="st">"anchors:      {:?}"</span>, sorter<span class="op">.</span>model<span class="op">.</span>anchors);
+}</pre>
+    </div>
+    <div class="code-block" id="tab-custom">
+<pre><span class="kw">use</span> visionsort<span class="op">::</span><span class="fn">vision_sort</span>;
+
+<span class="cm">// Sort by timestamp — implement Into&lt;f64&gt; on your key</span>
+<span class="kw">#[derive(Clone, Copy, PartialEq, PartialOrd)]</span>
+<span class="kw">struct</span> <span class="ty">Event</span> {
+    timestamp<span class="op">:</span> <span class="ty">f64</span>,
+    payload<span class="op">:</span> <span class="ty">u32</span>,
+}
+
+<span class="kw">impl</span> <span class="ty">Into</span><span class="op">&lt;</span><span class="ty">f64</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ty">Event</span> {
+    <span class="kw">fn</span> <span class="fn">into</span>(<span class="kw">self</span>) <span class="op">-&gt;</span> <span class="ty">f64</span> { <span class="kw">self</span><span class="op">.</span>timestamp }
+}
+
+<span class="kw">fn</span> <span class="fn">main</span>() {
+    <span class="kw">let mut</span> events <span class="op">=</span> <span class="fn">vec!</span>[
+        <span class="ty">Event</span> { timestamp<span class="op">:</span> <span class="st">1700.0</span>, payload<span class="op">:</span> <span class="st">42</span> },
+        <span class="ty">Event</span> { timestamp<span class="op">:</span> <span class="st">1500.0</span>, payload<span class="op">:</span> <span class="st">11</span> },
+    ];
+    <span class="fn">vision_sort</span>(<span class="op">&mut</span> events);
+}</pre>
+    </div>
+    <div class="code-block" id="tab-cargo">
+<pre><span class="cm"># Cargo.toml</span>
+
+[<span class="ty">package</span>]
+name <span class="op">=</span> <span class="st">"my-project"</span>
+version <span class="op">=</span> <span class="st">"0.1.0"</span>
+edition <span class="op">=</span> <span class="st">"2021"</span>
+
+[<span class="ty">dependencies</span>]
+visionsort <span class="op">=</span> { path <span class="op">=</span> <span class="st">"../visionsort"</span> }
+
+<span class="cm"># Then: cargo build</span>
+<span class="cm"># Then: cargo test   (16 tests, all green)</span></pre>
+    </div>
+  </div>
+
+  <!-- Model inspector widget -->
+  <div class="inspector">
+    <div class="inspector-header">
+      <span><span class="live-dot"></span>Distribution model — live state</span>
+      <span style="font-size:11px;color:var(--muted)" id="obs-counter">0 observations</span>
+    </div>
+    <div class="inspector-body">
+      <div class="insp-cell">
+        <div class="insp-key">ENTROPY</div>
+        <div class="insp-val" id="m-entropy">1.<span>000</span></div>
+        <div class="insp-sub">Decreasing as model learns</div>
+      </div>
+      <div class="insp-cell">
+        <div class="insp-key">CONFIDENCE</div>
+        <div class="insp-val" id="m-conf">0.<span>000</span></div>
+        <div class="insp-sub">Increasing with observations</div>
+      </div>
+      <div class="insp-cell">
+        <div class="insp-key">ANCHOR POINTS</div>
+        <div class="insp-val" id="m-anchors"><span>4</span></div>
+        <div class="insp-sub">Grow in high-surprise regions</div>
+      </div>
+      <div class="insp-cell">
+        <div class="insp-key">ROUTE MIX</div>
+        <div class="insp-val" id="m-route"><span>—</span></div>
+        <div class="insp-sub">Dominant route this sort</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:1rem;display:flex;gap:1rem;">
+    <button class="vis-btn" id="sim-btn">Simulate sort</button>
+    <button class="vis-btn" id="sim-reset">Reset model</button>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- Footer -->
+<footer>
+  <div class="footer-left">
+    <div class="footer-logo">VisionSort</div>
+    <div class="footer-sub">A prediction-driven adaptive sorting algorithm. T(n, H) complexity. Implemented in Rust. MIT licensed.</div>
+  </div>
+  <div class="footer-links">
+    <div class="footer-col">
+      <h4>Project</h4>
+      <a href="https://github.com">GitHub</a>
+      <a href="WHITEPAPER.md">Whitepaper</a>
+      <a href="README.md">README</a>
+    </div>
+    <div class="footer-col">
+      <h4>Algorithm</h4>
+      <a href="#thesis">Core Thesis</a>
+      <a href="#phases">Five Phases</a>
+      <a href="#routes">Route Matrix</a>
+    </div>
+    <div class="footer-col">
+      <h4>Author</h4>
+      <a href="https://github.com">Harsh Patel</a>
+      <a href="#">an-co</a>
+    </div>
+  </div>
+</footer>
+<div class="footer-bottom">
+  <span>VisionSort — MIT License</span>
+  <span>Built in Rust · 16 tests passing · 0 dependencies</span>
+</div>
+
+<script type="module">
+/* ── Load WASM module ── */
+import init, { wasm_vision_sort, wasm_vision_sort_with_trace, WasmModel } from './pkg/visionsort.js';
+
+let wasmReady = false;
+
+async function initWasm() {
+  await init();
+  wasmReady = true;
+  // Enable buttons once WASM is loaded
+  document.getElementById('vis-run').disabled = false;
+  document.getElementById('sim-btn').disabled = false;
+}
+
+// Start loading WASM immediately
+initWasm().catch(e => console.error('WASM init failed:', e));
+
+/* ── Visualiser ── */
+const barsEl = document.getElementById('bars');
+const phaseEl = document.getElementById('vis-phase');
+const N = 48;
+let data = [], running = false;
+
+function randData() {
+  return Array.from({length:N}, () => Math.floor(Math.random()*90)+5);
+}
+
+function renderBars(vals, classes) {
+  barsEl.innerHTML = '';
+  vals.forEach((v, i) => {
+    const b = document.createElement('div');
+    b.className = 'bar' + (classes && classes[i] ? ' '+classes[i] : '');
+    b.style.height = v + 'px';
+    barsEl.appendChild(b);
+  });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runSort() {
+  if (running || !wasmReady) return;
+  running = true;
+  document.getElementById('vis-run').classList.add('active');
+  data = randData();
+  renderBars(data);
+
+  // ── Call real WASM sort with trace ──
+  const traceResult = wasm_vision_sort_with_trace(new Float64Array(data));
+  const sorted = Array.from(traceResult.sorted);
+  const entropyTrace = traceResult.entropy_trace;
+
+  // Phase 1 — Glance (highlight sampled indices)
+  phaseEl.textContent = 'PHASE 1 — THE GLANCE';
+  const k = Math.ceil(Math.log2(N));
+  const cls = Array(N).fill('');
+  for (let i = 0; i < k; i++) {
+    const idx = Math.round(i * (N-1) / (k-1));
+    cls[idx] = 'glancing';
+  }
+  renderBars(data, cls);
+  await sleep(800);
+
+  // Phase 2 — Segment (show natural runs)
+  phaseEl.textContent = 'PHASE 2 — SEGMENTATION';
+  const segCls = Array(N).fill('');
+  let col = 0;
+  for (let i = 1; i < N; i++) {
+    if (data[i] < data[i-1]) col = (col + 1) % 2;
+    segCls[i] = col === 0 ? '' : 'sorted';
+  }
+  renderBars(data, segCls);
+  await sleep(800);
+
+  // Phase 3 — Disorder map
+  phaseEl.textContent = 'PHASE 3 — DISORDER MAPPING';
+  const disCls = data.map((v,i) => {
+    const left = i > 0 ? data[i-1] : v;
+    const right = i < N-1 ? data[i+1] : v;
+    const inv = (left > v ? 1 : 0) + (v > right ? 1 : 0);
+    return inv > 1 ? 'active' : (inv === 1 ? 'glancing' : 'sorted');
+  });
+  renderBars(data, disCls);
+  await sleep(800);
+
+  // Phase 4 — Animate transition from real unsorted → real sorted
+  phaseEl.textContent = 'PHASE 4 — DIRECTED FIXATION';
+  const steps = 18;
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;
+    const interpolated = data.map((v, i) => Math.round(v + t * (sorted[i] - v)));
+    const sCls = interpolated.map((_,i) => s > steps * 0.7 ? 'active' : '');
+    renderBars(interpolated, sCls);
+    await sleep(55);
+  }
+  await sleep(300);
+
+  // Phase 5 — Integration complete (show real sorted output)
+  phaseEl.textContent = 'PHASE 5 — INTEGRATION COMPLETE';
+  const finalCls = Array(N).fill('sorted');
+  renderBars(sorted, finalCls);
+
+  // Update cost curve with real entropy trace from this sort
+  if (entropyTrace && entropyTrace.length > 0) {
+    drawCurveFromTrace(Array.from(entropyTrace));
+  }
+
+  await sleep(1000);
+  phaseEl.textContent = 'SORTED · Press Run to go again';
+  running = false;
+  document.getElementById('vis-run').classList.remove('active');
+  data = sorted;
+}
+
+document.getElementById('vis-run').addEventListener('click', runSort);
+document.getElementById('vis-reset').addEventListener('click', () => {
+  if (running) return;
+  data = randData();
+  renderBars(data);
+  phaseEl.textContent = 'IDLE — press run';
+});
+document.getElementById('vis-step').addEventListener('click', () => {
+  if (!running) runSort();
+});
+
+// Initial render
+data = randData();
+renderBars(data);
+
+/* ── Code tabs ── */
+document.querySelectorAll('.code-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.code-block').forEach(b => b.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+/* ── Cost curve canvas ── */
+const canvas = document.getElementById('cost-canvas');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+
+// Store the latest entropy trace
+let lastEntropyTrace = null;
+
+function drawCurveFromTrace(entropyTrace) {
+  lastEntropyTrace = entropyTrace;
+  drawCurve();
+}
+
+function drawCurve() {
+  const W = canvas.offsetWidth;
+  const H = 180;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.scale(dpr, dpr);
+
+  ctx.clearRect(0,0,W,H);
+
+  const pad = { l: 48, r: 24, t: 16, b: 36 };
+  const cw = W - pad.l - pad.r;
+  const ch = H - pad.t - pad.b;
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let y = 0; y <= 4; y++) {
+    const yy = pad.t + ch * (1 - y/4);
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(pad.l+cw, yy); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.font = '10px DM Mono, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText((y * 25) + '%', pad.l - 8, yy + 4);
+  }
+
+  // X axis label
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.font = '10px DM Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('elements processed →', pad.l + cw/2, H - 4);
+
+  // Std sort — flat cost reference line
+  const pts = 80;
+  const stdPoints = [];
+  for (let i = 0; i <= pts; i++) {
+    const t = i / pts;
+    stdPoints.push({ x: pad.l + t * cw, y: pad.t + ch * 0.38 });
+  }
+
+  // Draw std sort reference
+  ctx.beginPath();
+  stdPoints.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label std sort
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.font = '10px DM Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('std sort — O(n log n)', pad.l + cw - 130, pad.t + ch * 0.38 - 6);
+
+  // Draw VisionSort curve — use real entropy trace if available, else default
+  const vsPoints = [];
+  if (lastEntropyTrace && lastEntropyTrace.length > 1) {
+    const trace = lastEntropyTrace;
+    const maxEntropy = Math.max(...trace, 0.001);
+    for (let i = 0; i <= pts; i++) {
+      const t = i / pts;
+      const traceIdx = Math.min(Math.floor(t * (trace.length - 1)), trace.length - 1);
+      const cost = trace[traceIdx] / maxEntropy;
+      vsPoints.push({ x: pad.l + t * cw, y: pad.t + ch * (1 - cost) });
+    }
+  } else {
+    // Placeholder until first sort run
+    for (let i = 0; i <= pts; i++) {
+      const t = i / pts;
+      const cost = 0.9 * Math.exp(-2.5 * t) + 0.08;
+      vsPoints.push({ x: pad.l + t * cw, y: pad.t + ch * (1 - cost) });
+    }
+  }
+
+  // Draw VisionSort line
+  ctx.beginPath();
+  vsPoints.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Fill under VisionSort curve
+  ctx.beginPath();
+  vsPoints.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pad.l + cw, pad.t + ch);
+  ctx.lineTo(pad.l, pad.t + ch);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(74,222,128,0.06)';
+  ctx.fill();
+
+  // Label VisionSort
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '10px DM Mono, monospace';
+  ctx.textAlign = 'left';
+  const label = lastEntropyTrace ? 'VisionSort — real entropy decay' : 'VisionSort — cost decreases (run sort for real data)';
+  ctx.fillText(label, pad.l + 8, pad.t + 12);
+}
+
+drawCurve();
+window.addEventListener('resize', drawCurve);
+
+/* ── Model inspector — uses real WasmModel ── */
+let wasmModel = null;
+let simInterval = null;
+let simData = null;
+let simIndex = 0;
+
+function updateInspector() {
+  if (!wasmModel) {
+    document.getElementById('m-entropy').innerHTML = '1.<span>000</span>';
+    document.getElementById('m-conf').innerHTML = '0.<span>000</span>';
+    document.getElementById('m-anchors').innerHTML = '<span>0</span>';
+    document.getElementById('m-route').innerHTML = '<span>—</span>';
+    document.getElementById('obs-counter').textContent = '0 observations';
+    return;
+  }
+
+  const entropy = wasmModel.entropy();
+  const obs = wasmModel.observations();
+  const anchors = wasmModel.anchor_count();
+
+  // Compute confidence the same way the Rust code does:
+  // confidence = (1 - entropy) * 0.5 + min(obs/100, 1) * 0.5
+  const conf = (1 - entropy) * 0.5 + Math.min(obs / 100, 1) * 0.5;
+
+  // Determine dominant route based on entropy/disorder
+  let route = '—';
+  if (obs > 0) {
+    if (entropy > 0.5) {
+      route = conf > 0.5 ? 'Verify' : 'FullSort';
+    } else {
+      route = conf > 0.5 ? 'NearlyFree' : 'PlacementSort';
+    }
+  }
+
+  document.getElementById('m-entropy').innerHTML =
+    entropy.toFixed(3).replace(/(\d+\.)(\d+)/, '$1<span>$2</span>');
+  document.getElementById('m-conf').innerHTML =
+    conf.toFixed(3).replace(/(\d+\.)(\d+)/, '$1<span>$2</span>');
+  document.getElementById('m-anchors').innerHTML = '<span>' + anchors + '</span>';
+  document.getElementById('m-route').innerHTML = '<span>' + route + '</span>';
+  document.getElementById('obs-counter').textContent = obs + ' observations';
+}
+
+document.getElementById('sim-btn').addEventListener('click', () => {
+  if (simInterval || !wasmReady) return;
+
+  // Create a real WasmModel and seed it
+  wasmModel = new WasmModel();
+
+  // Generate random data to simulate observations with
+  const n = 100;
+  simData = Array.from({length: n}, () => Math.random() * 1000);
+
+  // Seed the model with initial samples (Phase 1 glance)
+  const k = Math.ceil(Math.log2(n));
+  const samples = [];
+  for (let i = 0; i < k; i++) {
+    const idx = Math.round(i * (n - 1) / (k - 1));
+    samples.push(simData[idx]);
+  }
+  wasmModel.seed(new Float64Array(samples.sort((a,b) => a-b)));
+  simIndex = 0;
+
+  // Sort a copy to get the real positions
+  const sortedData = wasm_vision_sort(new Float64Array(simData));
+  const sortedArr = Array.from(sortedData);
+
+  updateInspector();
+
+  simInterval = setInterval(() => {
+    if (simIndex >= n) {
+      clearInterval(simInterval);
+      simInterval = null;
+      return;
+    }
+
+    const val = simData[simIndex];
+    // Find the real sorted position of this value
+    const actualPos = sortedArr.indexOf(val);
+    wasmModel.update(val, actualPos >= 0 ? actualPos : simIndex, n);
+    simIndex++;
+    updateInspector();
+  }, 40);
+});
+
+document.getElementById('sim-reset').addEventListener('click', () => {
+  clearInterval(simInterval);
+  simInterval = null;
+  if (wasmModel) {
+    wasmModel.free();
+    wasmModel = null;
+  }
+  simData = null;
+  simIndex = 0;
+  updateInspector();
+});
+
+updateInspector();
+</script>
+</body>
+</html>

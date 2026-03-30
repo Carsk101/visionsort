@@ -7,6 +7,9 @@
 // Complexity: T(n, H) where H is the entropy of the input distribution.
 // Cost per element decreases as the sort progresses.
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 
