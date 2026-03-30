@@ -432,6 +432,27 @@
     display: flex; justify-content: space-between;
   }
 
+  /* ── Benchmark Table ── */
+  .bench-table {
+    width: 100%; border-collapse: collapse; text-align: left;
+    font-size: 15px; margin-top: 1rem;
+  }
+  .bench-table th, .bench-table td {
+    padding: 1rem 0; border-bottom: 1px solid var(--border);
+  }
+  .bench-table th {
+    font-family: var(--serif); font-weight: 500; font-style: italic; font-size: 17px;
+    color: var(--text);
+  }
+  .bench-table td {
+    color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .bench-table td:first-child, .bench-table th:first-child {
+    font-family: var(--sans); font-style: normal; font-size: 15px; color: var(--text);
+  }
+  .bench-table td.win { color: var(--text); font-weight: 500; }
+  .bench-table td.lose { color: var(--muted); }
+
   /* ── Animations ── */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(20px); }
@@ -709,6 +730,65 @@
         <div class="complexity-val worst">O(n log n)</div>
       </div>
     </div>
+  </div>
+
+  <!-- Benchmarks -->
+  <div style="margin-top: 4rem;">
+    <div class="matrix-title" style="margin-bottom:1rem; text-transform:none; font-size: 18px;">200,000 elements — averaged over 12 runs</div>
+    <table class="bench-table">
+      <thead>
+        <tr>
+          <th>Input</th>
+          <th>VisionSort</th>
+          <th>Quicksort</th>
+          <th>std::sort</th>
+          <th>Merge sort</th>
+          <th>vs Quicksort</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Random</td>
+          <td>29,861μs</td>
+          <td>21,044μs</td>
+          <td>11,703μs</td>
+          <td>35,962μs</td>
+          <td class="lose">-29% slower</td>
+        </tr>
+        <tr>
+          <td>Nearly Sorted</td>
+          <td>5,972μs</td>
+          <td>8,835μs</td>
+          <td>5,174μs</td>
+          <td>13,952μs</td>
+          <td class="win">WIN +32%</td>
+        </tr>
+        <tr>
+          <td>Clustered</td>
+          <td>30,509μs</td>
+          <td>20,357μs</td>
+          <td>8,765μs</td>
+          <td>30,507μs</td>
+          <td class="lose">-33% slower</td>
+        </tr>
+        <tr>
+          <td>Reversed</td>
+          <td>3,124μs</td>
+          <td>6,407μs</td>
+          <td>247μs</td>
+          <td>13,284μs</td>
+          <td class="win">WIN +51%</td>
+        </tr>
+        <tr>
+          <td>All Same</td>
+          <td>1,627μs</td>
+          <td>232μs</td>
+          <td>187μs</td>
+          <td>12,308μs</td>
+          <td class="lose">-85% slower</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <!-- Cost curve -->
