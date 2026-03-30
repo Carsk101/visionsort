@@ -24,10 +24,10 @@ The four sort routes are:
 |---|---|---|---|
 | Low | Low | `NearlyFree` | Verify only — nearly free |
 | Low | High | `Verify` | Confirm order, fix if needed |
-| High | Low | `PlacementSort` | Predict position, place without comparison |
+| High | Low | `PlacementSort` | Bucket-local prediction and placement |
 | High | High | `FullSort` | Introsort fallback — guaranteed O(n log n) |
 
-`PlacementSort` is the novel route. It uses the distribution model to predict each element's output position, places it tentatively without comparison, then sorts only the small minority of elements where prediction confidence was too low or slots collided.
+`PlacementSort` is the novel route. The segment is divided into B = ⌈√L⌉ buckets. Each element is assigned to a bucket via a coarse model prediction, each bucket is sorted independently with insertion sort (keeping working sets within L1 cache), and buckets are written back sequentially. Only a final verification pass uses comparisons to fix any cross-bucket boundary violations.
 
 ---
 
@@ -228,11 +228,11 @@ visionsort/
 
 **Type requirements:** `T: PartialOrd + Into<f64> + Copy`
 
-The `Into<f64>` bound is required for the distribution model, which operates in f64 to interpolate predicted positions. If you're sorting a type that can't be meaningfully mapped to f64, VisionSort is not the right tool.
+The `Into<f64>` bound is required for the distribution model, which operates in f64 to interpolate predicted positions. This makes VisionSort well-suited for numeric data (integers, floats, timestamps, prices, IDs) and unsuitable for types without a meaningful total numeric order — arbitrary strings, composite keys, opaque hashes. This is a deliberate design boundary, not a limitation to be worked around.
 
 **Stability:** VisionSort is not a stable sort. Equal elements may appear in any order in the output.
 
-**Memory:** Phase 5 (k-way merge) snapshots each sorted segment into a separate Vec before merging. Peak memory usage is approximately 2× the input size.
+**Memory:** Phase 5 (k-way merge) uses a single scratch buffer equal to the input size. Peak memory usage is approximately 1× the input size.
 
 **Numeric edge cases:** NaN values in float inputs will produce unspecified behavior. Filter NaNs before sorting.
 
