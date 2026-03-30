@@ -432,26 +432,35 @@
     display: flex; justify-content: space-between;
   }
 
-  /* ── Benchmark Table ── */
-  .bench-table {
-    width: 100%; border-collapse: collapse; text-align: left;
-    font-size: 15px; margin-top: 1rem;
+  /* ── Benchmark Grid ── */
+  .bench-wrap { margin-top: 4rem; }
+  .bench-title {
+    font-family: var(--serif); font-size: 22px; font-weight: 400; font-style: normal;
+    color: var(--text); margin-bottom: 2rem;
   }
-  .bench-table th, .bench-table td {
-    padding: 1rem 0; border-bottom: 1px solid var(--border);
+  .bench-grid {
+    display: flex; flex-direction: column; width: 100%;
   }
-  .bench-table th {
+  .bench-row {
+    display: grid; grid-template-columns: 2fr 1.5fr 1.5fr 1.5fr 1.5fr 1.5fr;
+    padding: 1.25rem 0; border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .bench-header {
     font-family: var(--serif); font-weight: 500; font-style: italic; font-size: 17px;
     color: var(--text);
   }
-  .bench-table td {
-    color: var(--muted); font-variant-numeric: tabular-nums;
+  .bench-header:first-child {
+    font-family: var(--sans); font-style: normal; font-size: 15px; color: var(--text); font-weight: 500;
   }
-  .bench-table td:first-child, .bench-table th:first-child {
-    font-family: var(--sans); font-style: normal; font-size: 15px; color: var(--text);
+  .bench-cell {
+    color: var(--muted); font-variant-numeric: tabular-nums; font-size: 15px;
   }
-  .bench-table td.win { color: var(--text); font-weight: 500; }
-  .bench-table td.lose { color: var(--muted); }
+  .bench-cell:first-child {
+    font-family: var(--sans); color: var(--text); font-variant-numeric: normal;
+  }
+  .bench-cell.win { color: var(--text); font-weight: 500; }
+  .bench-cell.lose { color: var(--muted); }
 
   /* ── Animations ── */
   @keyframes fadeUp {
@@ -733,62 +742,58 @@
   </div>
 
   <!-- Benchmarks -->
-  <div style="margin-top: 4rem;">
-    <div class="matrix-title" style="margin-bottom:1rem; text-transform:none; font-size: 18px;">200,000 elements — averaged over 12 runs</div>
-    <table class="bench-table">
-      <thead>
-        <tr>
-          <th>Input</th>
-          <th>VisionSort</th>
-          <th>Quicksort</th>
-          <th>std::sort</th>
-          <th>Merge sort</th>
-          <th>vs Quicksort</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Random</td>
-          <td>29,861μs</td>
-          <td>21,044μs</td>
-          <td>11,703μs</td>
-          <td>35,962μs</td>
-          <td class="lose">-29% slower</td>
-        </tr>
-        <tr>
-          <td>Nearly Sorted</td>
-          <td>5,972μs</td>
-          <td>8,835μs</td>
-          <td>5,174μs</td>
-          <td>13,952μs</td>
-          <td class="win">WIN +32%</td>
-        </tr>
-        <tr>
-          <td>Clustered</td>
-          <td>30,509μs</td>
-          <td>20,357μs</td>
-          <td>8,765μs</td>
-          <td>30,507μs</td>
-          <td class="lose">-33% slower</td>
-        </tr>
-        <tr>
-          <td>Reversed</td>
-          <td>3,124μs</td>
-          <td>6,407μs</td>
-          <td>247μs</td>
-          <td>13,284μs</td>
-          <td class="win">WIN +51%</td>
-        </tr>
-        <tr>
-          <td>All Same</td>
-          <td>1,627μs</td>
-          <td>232μs</td>
-          <td>187μs</td>
-          <td>12,308μs</td>
-          <td class="lose">-85% slower</td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="bench-wrap">
+    <div class="bench-title">200,000 elements — averaged over 12 runs</div>
+    <div class="bench-grid">
+      <div class="bench-row" style="border-bottom: 1px solid var(--border-hi);">
+        <div class="bench-header">Input</div>
+        <div class="bench-header">VisionSort</div>
+        <div class="bench-header">Quicksort</div>
+        <div class="bench-header">std::sort</div>
+        <div class="bench-header">Merge sort</div>
+        <div class="bench-header">vs Quicksort</div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-cell">Random</div>
+        <div class="bench-cell">29,861μs</div>
+        <div class="bench-cell">21,044μs</div>
+        <div class="bench-cell">11,703μs</div>
+        <div class="bench-cell">35,962μs</div>
+        <div class="bench-cell lose">-29% slower</div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-cell">Nearly Sorted</div>
+        <div class="bench-cell">5,972μs</div>
+        <div class="bench-cell">8,835μs</div>
+        <div class="bench-cell">5,174μs</div>
+        <div class="bench-cell">13,952μs</div>
+        <div class="bench-cell win">WIN +32%</div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-cell">Clustered</div>
+        <div class="bench-cell">30,509μs</div>
+        <div class="bench-cell">20,357μs</div>
+        <div class="bench-cell">8,765μs</div>
+        <div class="bench-cell">30,507μs</div>
+        <div class="bench-cell lose">-33% slower</div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-cell">Reversed</div>
+        <div class="bench-cell">3,124μs</div>
+        <div class="bench-cell">6,407μs</div>
+        <div class="bench-cell">247μs</div>
+        <div class="bench-cell">13,284μs</div>
+        <div class="bench-cell win">WIN +51%</div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-cell">All Same</div>
+        <div class="bench-cell">1,627μs</div>
+        <div class="bench-cell">232μs</div>
+        <div class="bench-cell">187μs</div>
+        <div class="bench-cell">12,308μs</div>
+        <div class="bench-cell lose">-85% slower</div>
+      </div>
+    </div>
   </div>
 
   <!-- Cost curve -->
