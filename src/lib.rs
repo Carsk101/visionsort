@@ -9,6 +9,8 @@
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
+#[cfg(target_arch = "wasm32")]
+pub mod traced;
 
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;

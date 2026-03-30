@@ -1,0 +1,15 @@
+{
+  "name": "visionsort",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "visionsort_bg.wasm",
+    "visionsort.js",
+    "visionsort.d.ts"
+  ],
+  "main": "visionsort.js",
+  "types": "visionsort.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

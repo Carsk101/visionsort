@@ -12,6 +12,16 @@ pub fn wasm_vision_sort(data: Vec<f64>) -> Vec<f64> {
 }
 
 // ─────────────────────────────────────────────
+// wasm_traced_sort — sort with step-by-step snapshots
+// ─────────────────────────────────────────────
+#[wasm_bindgen]
+pub fn wasm_traced_sort(data: Vec<f64>) -> JsValue {
+    let mut arr = data;
+    let steps = crate::traced::traced_sort(&mut arr);
+    serde_wasm_bindgen::to_value(&steps).unwrap()
+}
+
+// ─────────────────────────────────────────────
 // wasm_vision_sort_with_trace — sort + record
 // entropy at each model update for the cost curve
 // ─────────────────────────────────────────────

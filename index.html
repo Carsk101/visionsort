@@ -157,6 +157,78 @@
   .vis-btn:hover { border-color: var(--green); color: var(--green); }
   .vis-btn.active { border-color: var(--green); color: var(--green); background: var(--green-faint); }
 
+  /* ── Step visualiser ── */
+  .step-vis {
+    margin-top: 2rem; padding: 2rem;
+    border: 1px solid var(--border); background: var(--bg2);
+  }
+  .step-bars {
+    display: flex; align-items: flex-end;
+    height: 120px; gap: 2px; position: relative;
+  }
+  .step-bar {
+    flex: 1; min-height: 4px;
+    transition: height 0.3s cubic-bezier(0.4,0,0.2,1),
+                background 0.2s ease;
+    position: relative;
+  }
+  .step-bar.default { background: var(--faint); }
+  .step-bar.highlight { background: var(--green); }
+  .step-bar.seg-a { background: rgba(96,165,250,0.5); }
+  .step-bar.seg-b { background: rgba(251,191,36,0.5); }
+  .step-bar.seg-c { background: rgba(248,113,113,0.5); }
+  .step-bar.seg-d { background: rgba(167,139,250,0.5); }
+  .step-bar.sorted-final { background: var(--green); }
+  .step-bar.glance-sample { background: rgba(74,222,128,0.7); box-shadow: 0 0 6px rgba(74,222,128,0.4); }
+
+  .seg-divider {
+    position: absolute; top: 0; bottom: 0;
+    width: 2px; background: rgba(255,255,255,0.2);
+    pointer-events: none; z-index: 2;
+  }
+
+  .step-info {
+    margin-top: 1rem;
+    font-size: 12px; color: var(--green);
+    letter-spacing: 0.06em;
+    min-height: 18px;
+  }
+  .step-segments-info {
+    margin-top: 0.75rem;
+    display: flex; flex-wrap: wrap; gap: 0.5rem;
+  }
+  .seg-tag {
+    font-size: 10px; padding: 2px 8px;
+    border: 1px solid var(--faint);
+    color: var(--muted); letter-spacing: 0.04em;
+    transition: all 0.2s;
+  }
+  .seg-tag.active-seg {
+    border-color: var(--green); color: var(--green);
+    background: var(--green-faint);
+  }
+  .step-controls {
+    margin-top: 1.2rem;
+    display: flex; gap: 0.75rem; align-items: center;
+  }
+  .speed-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 80px; height: 4px; background: var(--faint);
+    outline: none; border-radius: 2px;
+  }
+  .speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--green); cursor: pointer;
+  }
+  .speed-label {
+    font-size: 10px; color: var(--faint); letter-spacing: 0.04em;
+  }
+  .step-counter {
+    font-size: 10px; color: var(--faint);
+    letter-spacing: 0.04em; margin-left: auto;
+  }
+
   /* ── Section shared ── */
   section { max-width: 1100px; margin: 0 auto; padding: 6rem 2rem; }
   .section-label {
@@ -450,6 +522,21 @@
       <button class="vis-btn" id="vis-run">Run</button>
       <button class="vis-btn" id="vis-reset">Reset</button>
       <button class="vis-btn" id="vis-step">Step</button>
+    </div>
+  </div>
+
+  <!-- Step-by-Step Algorithm Visualiser -->
+  <div class="step-vis" id="step-vis">
+    <div class="vis-label"><span class="live-dot"></span>Algorithm step-by-step — real internal operations</div>
+    <div class="step-bars" id="step-bars"></div>
+    <div class="step-info" id="step-info">IDLE — press Run to trace the algorithm</div>
+    <div class="step-segments-info" id="step-segments"></div>
+    <div class="step-controls">
+      <button class="vis-btn" id="step-run">Run</button>
+      <button class="vis-btn" id="step-next">Step →</button>
+      <button class="vis-btn" id="step-prev">← Back</button>
+      <button class="vis-btn" id="step-reset2">Reset</button>
+      <span class="step-counter" id="step-counter"></span>
     </div>
   </div>
 </section>
@@ -786,7 +873,7 @@ visionsort <span class="op">=</span> { path <span class="op">=</span> <span clas
 
 <script type="module">
 /* ── Load WASM module ── */
-import init, { wasm_vision_sort, wasm_vision_sort_with_trace, WasmModel } from './pkg/visionsort.js';
+import init, { wasm_vision_sort, wasm_vision_sort_with_trace, wasm_traced_sort, WasmModel } from './pkg/visionsort.js';
 
 let wasmReady = false;
 
@@ -1134,6 +1221,174 @@ document.getElementById('sim-reset').addEventListener('click', () => {
 });
 
 updateInspector();
+
+/* ═══════════════════════════════════════════════════════
+   STEP-BY-STEP ALGORITHM VISUALISER
+   ═══════════════════════════════════════════════════════ */
+
+const STEP_N = 48;
+const segColors = ['seg-a', 'seg-b', 'seg-c', 'seg-d'];
+let stepTraceData = [];    // Array of SortStep from wasm_traced_sort
+let stepCurrent = -1;      // Current frame index
+
+const stepBarsEl = document.getElementById('step-bars');
+const stepInfoEl = document.getElementById('step-info');
+const stepSegEl = document.getElementById('step-segments');
+const stepCounterEl = document.getElementById('step-counter');
+
+// Generate initial bars
+function stepInitBars() {
+  stepBarsEl.innerHTML = '';
+  const data = [];
+  for (let i = 0; i < STEP_N; i++) {
+    data.push(Math.random() * 0.85 + 0.15);
+  }
+  data.forEach(v => {
+    const bar = document.createElement('div');
+    bar.classList.add('step-bar', 'default');
+    bar.style.height = (v * 100) + '%';
+    stepBarsEl.appendChild(bar);
+  });
+  return data;
+}
+
+// Render a single step frame
+function renderStep(step) {
+  const bars = stepBarsEl.children;
+  const arr = step.array;
+  const maxVal = Math.max(...arr, 1);
+  const highlights = new Set(step.highlights || []);
+  const segments = step.segments || [];
+
+  // Build segment lookup: index → segment index
+  const segLookup = new Array(arr.length).fill(-1);
+  segments.forEach((seg, si) => {
+    for (let i = seg.start; i < seg.end; i++) {
+      segLookup[i] = si;
+    }
+  });
+
+  // Find active segment
+  const activeSeg = segments.findIndex(s => s.active);
+
+  // Render bars
+  for (let i = 0; i < arr.length; i++) {
+    const bar = bars[i];
+    if (!bar) continue;
+    bar.style.height = ((arr[i] / maxVal) * 100) + '%';
+
+    // Clear classes
+    bar.className = 'step-bar';
+
+    if (step.phase === 'merge') {
+      bar.classList.add('sorted-final');
+    } else if (step.phase === 'glance' && highlights.has(i)) {
+      bar.classList.add('glance-sample');
+    } else if (step.phase === 'fixate' && highlights.has(i)) {
+      bar.classList.add('highlight');
+    } else if (segments.length > 0) {
+      const si = segLookup[i];
+      if (si >= 0) {
+        bar.classList.add(segColors[si % segColors.length]);
+      } else {
+        bar.classList.add('default');
+      }
+    } else {
+      bar.classList.add('default');
+    }
+  }
+
+  // Remove old dividers
+  stepBarsEl.querySelectorAll('.seg-divider').forEach(d => d.remove());
+
+  // Add segment dividers
+  if (segments.length > 1) {
+    const totalWidth = stepBarsEl.offsetWidth;
+    segments.forEach((seg, si) => {
+      if (si === 0) return; // no divider before first segment
+      const pct = (seg.start / arr.length) * 100;
+      const div = document.createElement('div');
+      div.classList.add('seg-divider');
+      div.style.left = pct + '%';
+      stepBarsEl.appendChild(div);
+    });
+  }
+
+  // Info
+  stepInfoEl.textContent = step.label;
+
+  // Segment tags
+  stepSegEl.innerHTML = '';
+  if (segments.length > 0) {
+    segments.forEach((seg, si) => {
+      const tag = document.createElement('span');
+      tag.classList.add('seg-tag');
+      if (si === activeSeg) tag.classList.add('active-seg');
+      const len = seg.end - seg.start;
+      tag.textContent = `[${seg.start}..${seg.end}] ${seg.route} (${len})`;
+      stepSegEl.appendChild(tag);
+    });
+  }
+
+  // Counter
+  stepCounterEl.textContent = `${stepCurrent + 1} / ${stepTraceData.length}`;
+}
+
+// Run traced sort
+document.getElementById('step-run').addEventListener('click', () => {
+  if (!wasmReady) return;
+
+  const data = [];
+  for (let i = 0; i < STEP_N; i++) {
+    data.push(Math.random() * 0.85 + 0.15);
+  }
+
+  // Rebuild bars for new data
+  stepBarsEl.innerHTML = '';
+  data.forEach(v => {
+    const bar = document.createElement('div');
+    bar.classList.add('step-bar', 'default');
+    bar.style.height = (v * 100) + '%';
+    stepBarsEl.appendChild(bar);
+  });
+
+  // Call real traced sort
+  stepTraceData = wasm_traced_sort(new Float64Array(data));
+  stepCurrent = 0;
+  renderStep(stepTraceData[0]);
+});
+
+// Step forward
+document.getElementById('step-next').addEventListener('click', () => {
+  if (stepTraceData.length === 0) return;
+  if (stepCurrent < stepTraceData.length - 1) {
+    stepCurrent++;
+    renderStep(stepTraceData[stepCurrent]);
+  }
+});
+
+// Step back
+document.getElementById('step-prev').addEventListener('click', () => {
+  if (stepTraceData.length === 0) return;
+  if (stepCurrent > 0) {
+    stepCurrent--;
+    renderStep(stepTraceData[stepCurrent]);
+  }
+});
+
+// Reset
+document.getElementById('step-reset2').addEventListener('click', () => {
+  stepTraceData = [];
+  stepCurrent = -1;
+  stepInfoEl.textContent = 'IDLE — press Run to trace the algorithm';
+  stepSegEl.innerHTML = '';
+  stepCounterEl.textContent = '';
+  stepInitBars();
+});
+
+// Init bars
+stepInitBars();
+
 </script>
 </body>
 </html>
