@@ -533,8 +533,9 @@
     <div class="step-segments-info" id="step-segments"></div>
     <div class="step-controls">
       <button class="vis-btn" id="step-run">Run</button>
-      <button class="vis-btn" id="step-next">Step →</button>
       <button class="vis-btn" id="step-prev">← Back</button>
+      <button class="vis-btn" id="step-next">Step →</button>
+      <button class="vis-btn" id="step-skip">Skip Phase ⏭</button>
       <button class="vis-btn" id="step-reset2">Reset</button>
       <span class="step-counter" id="step-counter"></span>
     </div>
@@ -1374,6 +1375,16 @@ document.getElementById('step-prev').addEventListener('click', () => {
     stepCurrent--;
     renderStep(stepTraceData[stepCurrent]);
   }
+});
+
+// Skip Phase
+document.getElementById('step-skip').addEventListener('click', () => {
+  if (stepTraceData.length === 0 || stepCurrent >= stepTraceData.length - 1) return;
+  const currentPhase = stepTraceData[stepCurrent].phase;
+  while (stepCurrent < stepTraceData.length - 1 && stepTraceData[stepCurrent].phase === currentPhase) {
+    stepCurrent++;
+  }
+  renderStep(stepTraceData[stepCurrent]);
 });
 
 // Reset
