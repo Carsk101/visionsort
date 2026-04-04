@@ -382,6 +382,47 @@ fn lcg_sequence(n: usize, seed: u64) -> Vec<f64> {
     }).collect()
 }
 
+fn run_scale_benchmark(n: usize, label: &str) {
+    let inputs: Vec<(&str, Vec<f64>)> = vec![
+        ("Random",        lcg_sequence(n, 42)),
+        ("Nearly Sorted", {
+            let mut d: Vec<f64> = (0..n).map(|x| x as f64).collect();
+            let swaps = lcg_sequence((n / 50).min(4000), 7);
+            for i in (0..swaps.len()).step_by(2) {
+                let a = (swaps[i] as usize) % n;
+                let b = (swaps[i+1] as usize) % n;
+                d.swap(a, b);
+            }
+            d
+        }),
+        ("Clustered",     {
+            let bands = [100_000.0_f64, 200_000.0, 300_000.0, 400_000.0, 500_000.0];
+            let seq = lcg_sequence(n, 13);
+            seq.iter().enumerate().map(|(i, &x)| bands[i % 5] + x % 10_000.0).collect()
+        }),
+        ("Reversed",      (0..n).map(|x| (n - x) as f64).collect()),
+        ("All Same",      vec![42.0_f64; n]),
+    ];
+
+    eprintln!("
+=== {} — {} elements ===
+", label, n);
+    eprintln!("{:<16} {:>12} {:>12} {:>12} {:>12}",
+        "Input", "VisionSort", "Quicksort", "std::sort", "Merge sort");
+    eprintln!("{}", "-".repeat(68));
+
+    for (name, data) in &inputs {
+        let r = run_comparison(name, data);
+        let vs_qs = if r.visionsort_us < r.quicksort_us {
+            format!("+{}%", (r.quicksort_us - r.visionsort_us) * 100 / r.quicksort_us)
+        } else {
+            format!("-{}%", (r.visionsort_us - r.quicksort_us) * 100 / r.visionsort_us)
+        };
+        eprintln!("{:<16} {:>10}μs {:>10}μs {:>10}μs {:>10}μs  vs QS: {}",
+            r.input_type, r.visionsort_us, r.quicksort_us, r.std_sort_us, r.merge_sort_us, vs_qs);
+    }
+}
+
 fn main() {
     let n = 200_000;
 
@@ -500,6 +541,10 @@ fn main() {
     }
     println!("  ]");
     println!("}}");
+
+    // Scale benchmarks — 1M and 10M elements
+    run_scale_benchmark(1_000_000, "1M ELEMENTS");
+    run_scale_benchmark(10_000_000, "10M ELEMENTS");
 }
 
 // ── Comparison sorts ─────────────────────────────────────────────────────────
